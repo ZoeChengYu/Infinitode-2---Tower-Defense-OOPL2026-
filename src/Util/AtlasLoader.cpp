@@ -78,9 +78,12 @@ AtlasLoader::AtlasLoader(const std::string &atlasPath,
 }
 
 std::shared_ptr<Image> AtlasLoader::Get(const std::string &spriteName) const {
-    const std::unordered_map<std::string,
-                             AtlasLoader::AtlasRegion>::const_iterator regionIt =
-        m_AtlasRegions.find(spriteName);
+
+    if (m_Cache.count(spriteName)) {
+        return m_Cache[spriteName];
+    }
+
+    const auto regionIt = m_AtlasRegions.find(spriteName);
     if (regionIt == m_AtlasRegions.end()) {
         LOG_ERROR("Sprite not found in atlas: {}", spriteName);
         return nullptr;
@@ -140,7 +143,22 @@ std::shared_ptr<Image> AtlasLoader::Get(const std::string &spriteName) const {
     SDL_FreeSurface(spriteSurface);
     SDL_FreeSurface(atlasSurface);
 
-    return std::make_shared<Image>(cacheFilePath);
+    auto newImage = std::make_shared<Image>(cacheFilePath);
+    m_Cache[spriteName] = newImage; 
+    
+    return newImage;
+}
+
+float AtlasLoader::Getsize(const std::string &spriteName) const {
+    auto it = m_AtlasRegions.find(spriteName);
+
+    if (it == m_AtlasRegions.end()) {
+        LOG_ERROR("Sprite not found in atlas: {}", spriteName);
+        return 0.0F;
+    }
+
+    // 回傳寬度（或者是你需要的尺寸單位）
+    return static_cast<float>(it->second.width);
 }
 
 } // namespace Util

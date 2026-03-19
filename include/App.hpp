@@ -28,6 +28,7 @@ private:
     std::shared_ptr<Util::AtlasLoader> m_AtlasImage;
     std::shared_ptr<Util::GameObject> m_ImageObject =
         std::make_shared<Util::GameObject>();
+    std::vector<std::shared_ptr<Util::GameObject>> m_Maplist;
     Util::Renderer m_Renderer;
 };
 

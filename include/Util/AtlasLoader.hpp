@@ -12,6 +12,7 @@ public:
     AtlasLoader(const std::string &atlasPath, const std::string &imagePath);
 
     std::shared_ptr<Image> Get(const std::string &spriteName) const;
+    float Getsize(const std::string &spriteName) const;
 
 private:
     struct AtlasRegion {
@@ -24,6 +25,7 @@ private:
 private:
     std::string m_ImagePath;
     std::unordered_map<std::string, AtlasRegion> m_AtlasRegions;
+    mutable std::unordered_map<std::string, std::shared_ptr<Image>> m_Cache;
 };
 
 } // namespace Util
