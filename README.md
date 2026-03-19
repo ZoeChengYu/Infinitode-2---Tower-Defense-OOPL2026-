@@ -10,7 +10,7 @@
 
    ```bash
    git clone https://github.com/ZoeChengYu/Infinitode-2---Tower-Defense-OOPL2026-.git --recursive
-````
+   ```
 
 2. 使用 `Debug` 模式設定專案：
 
