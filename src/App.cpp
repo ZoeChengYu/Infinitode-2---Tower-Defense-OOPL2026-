@@ -107,41 +107,180 @@ void App::Start() {
         
         
     }
+    // ---------------------------------------------------------
+    // === 自動尋路系統 (Pathfinding) ===
+    // ---------------------------------------------------------
+    
+    // 1. 建立一個 2D 陣列來記錄「這格是不是走過了」，避免敵人原地打轉
+    std::vector<std::vector<bool>> visited(Map_Height, std::vector<bool>(Map_Width, false));
+    
+    // 定義哪些代碼是合法可以走的道路
+    std::vector<std::string> walkable = {"R_H", "R_V", "R_LD", "R_TL", "HW"};
+
+    int startX = -1, startY = -1;
+
+    // 2. 尋找起點 (EP)
+    for (int y = 0; y < Map_Height; y++) {
+        for (int x = 0; x < Map_Width; x++) {
+            if (mapDesign[y][x] == "EP") {
+                startX = x;
+                startY = y;
+                break;
+            }
+        }
+    }
+
+    if (startX != -1 && startY != -1) {
+        int currX = startX;
+        int currY = startY;
+        
+        // 將陣列索引 (gridX, gridY) 轉換為畫面座標 (posX, posY) 的 Lambda 匿名函數
+        // 這邊直接套用你剛剛寫的完美置中數學！
+        auto GetWorldPos = [&](int gridX, int gridY) {
+            float posX = offsetX + (gridX * block_Size) + (block_Size / 2.0f);
+            float posY = offsetY - (gridY * block_Size) - (block_Size / 2.0f);
+            return std::make_pair(posX, posY);
+        };
+
+        // 把起點加入路徑
+        m_PathCoords.push_back(GetWorldPos(currX, currY));
+        visited[currY][currX] = true;
+
+        // 定義搜尋方向：右, 下, 左, 上
+        int dx[] = {1, 0, -1, 0};
+        int dy[] = {0, 1, 0, -1};
+
+        bool reachedBase = false;
+
+        // 3. 開始追蹤路徑
+        while (!reachedBase) {
+            bool moved = false;
+            
+            // 檢查上下左右四個相鄰的格子
+            for (int i = 0; i < 4; i++) {
+                int nextX = currX + dx[i];
+                int nextY = currY + dy[i];
+                
+                // 檢查是否超出地圖邊界
+                if (nextX >= 0 && nextX < Map_Width && nextY >= 0 && nextY < Map_Height) {
+                    
+                    // 取得相鄰格子的代碼
+                    std::string nextTile = mapDesign[nextY][nextX];
+                    
+                    // 如果這格還沒走過，而且它是合法道路或是主塔
+                    bool isWalkable = std::find(walkable.begin(), walkable.end(), nextTile) != walkable.end();
+                    
+                    if (!visited[nextY][nextX] && isWalkable) {
+                        // 決定要走到這格
+                        currX = nextX;
+                        currY = nextY;
+                        visited[currY][currX] = true; // 標記為已走過
+                        
+                        // 轉換為實際座標並存入路徑清單
+                        m_PathCoords.push_back(GetWorldPos(currX, currY));
+                        moved = true;
+                        
+                        // 如果這格是主塔 (HW)，尋路結束！
+                        if (nextTile == "HW") {
+                            reachedBase = true;
+                            LOG_TRACE("尋路成功！已找到抵達主塔的路徑。");
+                        }
+                        
+                        break; // 已經找到下一步了，跳出 for 迴圈，繼續 while 往前走
+                    }
+                }
+            }
+            
+            // 如果四個方向都沒路走，代表遇到死胡同
+            if (!moved) {
+                LOG_ERROR("尋路失敗：遇到死胡同，請檢查 map.txt 的道路是否斷線！");
+                break;
+            }
+        }
+    } else {
+        LOG_ERROR("尋路失敗：地圖上找不到起點 (EP)！");
+    }
 
     m_CurrentState = State::UPDATE;
 }
 
 void App::Update() {
     constexpr float speed = 10.0F;
-    float dx=0.0F;
-    float dy=0.0F;
+    float dx = 0.0F;
+    float dy = 0.0F;
 
-    // WASD 控制圖片移動。
-    if (Util::Input::IsKeyDown(Util::Keycode::A)) {
-       dx -= speed;
+    if (Util::Input::IsKeyDown(Util::Keycode::A)) dx -= speed;
+    if (Util::Input::IsKeyDown(Util::Keycode::D)) dx += speed;
+    if (Util::Input::IsKeyDown(Util::Keycode::W)) dy += speed;
+    if (Util::Input::IsKeyDown(Util::Keycode::S)) dy -= speed;
+
+    // ---------------------------------------------------------
+    // 1. 自動生怪邏輯 (Spawner)
+    // ---------------------------------------------------------
+    if (!m_PathCoords.empty()) {
+        if (m_SpawnCooldown > 0) {
+            m_SpawnCooldown--; // 冷卻中，倒數減一
+        } else {
+            // 冷卻結束，生出一隻新敵人！
+            auto enemyImage = m_AtlasImage->Get("enemy-type-regular");
+            auto enemy = std::make_shared<Enemy>(enemyImage, m_PathCoords);
+            
+            m_Enemies.push_back(enemy);
+            m_Renderer.AddChild(enemy);
+            
+            m_SpawnCooldown = SPAWN_INTERVAL; // 重置冷卻時間
+        }
     }
-    if (Util::Input::IsKeyDown(Util::Keycode::D)) {
-        dx+= speed;
+
+    // ---------------------------------------------------------
+    // 2. 更新所有敵人的狀態
+    // ---------------------------------------------------------
+    for (auto& enemy : m_Enemies) {
+        enemy->Update(m_PathCoords);
     }
-    if (Util::Input::IsKeyDown(Util::Keycode::W)) {
-        dy += speed;
-    }
-    if (Util::Input::IsKeyDown(Util::Keycode::S)) {
-        dy -= speed;
+
+    // ---------------------------------------------------------
+    // 3. 記憶體回收 (移除已經抵達終點的敵人)
+    // ---------------------------------------------------------
+    for (auto it = m_Enemies.begin(); it != m_Enemies.end(); ) {
+        if ((*it)->HasReachedBase()) {
+            // 先從渲染樹上拔除，這樣畫面才不會留下殘影
+            m_Renderer.RemoveChild(*it); 
+            // 再從管理清單中刪除，釋放記憶體
+            it = m_Enemies.erase(it);    
+        } else {
+            ++it;
+        }
     }
 
     if (dx != 0.0F || dy != 0.0F) {
+        // 1. 移動地圖
         for (auto& tile : m_Maplist) {
             tile->m_Transform.translation.x += dx;
             tile->m_Transform.translation.y += dy;
         }
+        
+        // 2. 移動敵人，確保他們跟著地圖一起平移
+        for (auto& enemy : m_Enemies) {
+            enemy->m_Transform.translation.x += dx;
+            enemy->m_Transform.translation.y += dy;
+        }
+        
+        // 3. 【關鍵】同步更新所有的「路徑節點座標」
+        for (auto& coord : m_PathCoords) {
+            coord.first += dx;
+            coord.second += dy;
+        }
+    }
+
+    // 更新每個敵人的 AI 邏輯 (朝著當前最新的路徑節點前進)
+    for (auto& enemy : m_Enemies) {
+        enemy->Update(m_PathCoords);
     }
 
     m_Renderer.Update();
 
-    // 保留最基本的離開方式，避免視窗無法正常關閉。
-    if (Util::Input::IsKeyUp(Util::Keycode::ESCAPE) ||
-        Util::Input::IfExit()) {
+    if (Util::Input::IsKeyUp(Util::Keycode::ESCAPE) || Util::Input::IfExit()) {
         m_CurrentState = State::END;
     }
 }
