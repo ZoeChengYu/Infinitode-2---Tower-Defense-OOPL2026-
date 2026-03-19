@@ -28,7 +28,7 @@ void App::Start() {
 }
 
 void App::Update() {
-    constexpr float speed = 5.0F;
+    constexpr float speed = 10.0F;
 
     // WASD 控制圖片移動。
     if (Util::Input::IsKeyDown(Util::Keycode::A)) {

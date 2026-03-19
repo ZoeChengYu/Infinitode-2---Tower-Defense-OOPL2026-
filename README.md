@@ -1,24 +1,35 @@
-# PTSD Template
+# OOPL2026 Class Project
 
-This is a [PTSD](https://github.com/ntut-open-source-club/practical-tools-for-simple-design) framework template for students taking OOPL2024s.
+本專案為 OOPL2026 課程練習專案，基於 [PTSD Template](https://github.com/ntut-open-source-club/ptsd-template) 進行修改與開發。
 
-## Quick Start
+專案目標是以物件導向程式設計的方式，練習專案遊戲開發。
 
-1. Use this template to create a new repository
-   ![github screenshot](https://github.com/ntut-rick/ptsd-template/assets/126899559/ef62242f-03ed-481d-b858-12b730c09beb)
+## 快速開始
 
-2. Clone your repository
+1. 複製專案：
 
    ```bash
-   git clone YOUR_GIT_URL --recursive
+   git clone https://github.com/ZoeChengYu/Infinitode-2---Tower-Defense-OOPL2026-.git --recursive
+````
+
+2. 使用 `Debug` 模式設定專案：
+
+   > [!WARNING]
+   > 請使用 `Debug` 模式建置專案，因為目前 `Release` 模式仍有問題。
+   > 此外，請加入 `-DCMAKE_POLICY_VERSION_MINIMUM=3.5`，以避免舊版 CMake 政策造成的相容性問題。
+
+   ```bash
+   cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_POLICY_VERSION_MINIMUM=3.5
    ```
 
-3. Build your project
+3. 建置專案：
 
-  > [!WARNING]
-  > Please build your project in `Debug` because our `Release` path is broken D:
-   
-   ```sh
-   cmake -DCMAKE_BUILD_TYPE=Debug -B build # -G Ninja
+   ```bash
+   cmake --build build
    ```
-   better read [PTSD README](https://github.com/ntut-open-source-club/practical-tools-for-simple-design)
+
+4. 執行專案：
+
+   ```bash
+   ./build/REPLACE_WITH_YOUR_PROJECT_NAME
+   ```
