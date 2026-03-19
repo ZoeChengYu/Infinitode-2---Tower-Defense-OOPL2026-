@@ -3,6 +3,10 @@
 
 #include "pch.hpp" // IWYU pragma: export
 
+#include "Util/AtlasLoader.hpp"
+#include "Util/GameObject.hpp"
+#include "Util/Renderer.hpp"
+
 class App {
 public:
     enum class State {
@@ -20,10 +24,11 @@ public:
     void End(); // NOLINT(readability-convert-member-functions-to-static)
 
 private:
-    void ValidTask();
-
-private:
     State m_CurrentState = State::START;
+    std::shared_ptr<Util::AtlasLoader> m_AtlasImage;
+    std::shared_ptr<Util::GameObject> m_ImageObject =
+        std::make_shared<Util::GameObject>();
+    Util::Renderer m_Renderer;
 };
 
 #endif
