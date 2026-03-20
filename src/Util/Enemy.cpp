@@ -3,6 +3,8 @@
 
 Enemy::Enemy(std::shared_ptr<Util::Image> image, const std::vector<std::pair<float, float>>& path) {
     SetDrawable(image);
+    // 👇 新增這行！將敵人的渲染層級拉高，確保它永遠蓋在地圖上方
+    SetZIndex(10);
     if (!path.empty()) {
         // 將敵人初始位置設定在路徑的第一個點 (EP)
         m_Transform.translation = {path[0].first, path[0].second};

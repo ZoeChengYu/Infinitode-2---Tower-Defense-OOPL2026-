@@ -53,13 +53,15 @@ void App::Start() {
 
     // 你的字典保持不變
     std::unordered_map<std::string, std::string> textureDict = {
-        {"A0",   "tile-type-platform"},       // 普通建塔平台 (深灰色)
-        {"EP",   "tile-type-spawn-portal"},   // 敵洞 (紫色漩渦)
-        {"HW",   "tile-type-target-base"},    // 主塔 (藍色六角形)
-        {"R_H",  "tile-type-road-xoxo"},      // 水平道路
-        {"R_V",  "tile-type-road-oxox"},      // 垂直道路
+        {"NOMO",   "tile-type-platform"},       // 普通建塔平台 (深灰色)
+        {"EMPT",   "tile-type-spawn-portal"},   // 敵洞 (紫色漩渦)
+        {"HOME",   "tile-type-target-base"},    // 主塔 (藍色六角形)
+        {"R_H0",  "tile-type-road-xoxo"},      // 水平道路
+        {"R_V0",  "tile-type-road-oxox"},      // 垂直道路
         {"R_LD", "tile-type-road-xxoo"},      // 轉角 (左接下)
-        {"R_TL", "tile-type-road-oxxo"}       // 轉角 (上接左)
+        {"R_RD", "tile-type-road-xoox"},      // 轉角 (右接下)
+        {"R_TL", "tile-type-road-oxxo"},       // 轉角 (上接左)
+        {"R_TR", "tile-type-road-ooxx"}        // 轉角 (上接右)
     };
 
     const float Scale=0.25;
@@ -71,7 +73,7 @@ void App::Start() {
     for(int y=0;y<Map_Height;y++){
         for(int x=0;x<Map_Width;x++){
             std::string tileCode = mapDesign[y][x];
-            if (tileCode == "0") {
+            if (tileCode == "0000") {
                 continue;
             }
 
@@ -115,14 +117,14 @@ void App::Start() {
     std::vector<std::vector<bool>> visited(Map_Height, std::vector<bool>(Map_Width, false));
     
     // 定義哪些代碼是合法可以走的道路
-    std::vector<std::string> walkable = {"R_H", "R_V", "R_LD", "R_TL", "HW"};
+    std::vector<std::string> walkable = {"R_H0", "R_V0", "R_LD","R_RD", "R_TL","R_TR", "HOME"};
 
     int startX = -1, startY = -1;
 
     // 2. 尋找起點 (EP)
     for (int y = 0; y < Map_Height; y++) {
         for (int x = 0; x < Map_Width; x++) {
-            if (mapDesign[y][x] == "EP") {
+            if (mapDesign[y][x] == "EMPT") {
                 startX = x;
                 startY = y;
                 break;
@@ -181,7 +183,7 @@ void App::Start() {
                         moved = true;
                         
                         // 如果這格是主塔 (HW)，尋路結束！
-                        if (nextTile == "HW") {
+                        if (nextTile == "HOME") {
                             reachedBase = true;
                             LOG_TRACE("尋路成功！已找到抵達主塔的路徑。");
                         }
@@ -214,68 +216,51 @@ void App::Update() {
     if (Util::Input::IsKeyDown(Util::Keycode::W)) dy += speed;
     if (Util::Input::IsKeyDown(Util::Keycode::S)) dy -= speed;
 
-    // ---------------------------------------------------------
-    // 1. 自動生怪邏輯 (Spawner)
-    // ---------------------------------------------------------
+    // 1. 自動生怪邏輯
     if (!m_PathCoords.empty()) {
         if (m_SpawnCooldown > 0) {
-            m_SpawnCooldown--; // 冷卻中，倒數減一
+            m_SpawnCooldown--;
         } else {
-            // 冷卻結束，生出一隻新敵人！
             auto enemyImage = m_AtlasImage->Get("enemy-type-regular");
             auto enemy = std::make_shared<Enemy>(enemyImage, m_PathCoords);
-            
             m_Enemies.push_back(enemy);
             m_Renderer.AddChild(enemy);
-            
-            m_SpawnCooldown = SPAWN_INTERVAL; // 重置冷卻時間
+            m_SpawnCooldown = SPAWN_INTERVAL;
         }
     }
 
-    // ---------------------------------------------------------
-    // 2. 更新所有敵人的狀態
-    // ---------------------------------------------------------
-    for (auto& enemy : m_Enemies) {
-        enemy->Update(m_PathCoords);
-    }
-
-    // ---------------------------------------------------------
-    // 3. 記憶體回收 (移除已經抵達終點的敵人)
-    // ---------------------------------------------------------
-    for (auto it = m_Enemies.begin(); it != m_Enemies.end(); ) {
-        if ((*it)->HasReachedBase()) {
-            // 先從渲染樹上拔除，這樣畫面才不會留下殘影
-            m_Renderer.RemoveChild(*it); 
-            // 再從管理清單中刪除，釋放記憶體
-            it = m_Enemies.erase(it);    
-        } else {
-            ++it;
-        }
-    }
-
+    // 2. 處理玩家位移 (攝影機同步)
     if (dx != 0.0F || dy != 0.0F) {
-        // 1. 移動地圖
+        // 移動地圖
         for (auto& tile : m_Maplist) {
             tile->m_Transform.translation.x += dx;
             tile->m_Transform.translation.y += dy;
         }
-        
-        // 2. 移動敵人，確保他們跟著地圖一起平移
-        for (auto& enemy : m_Enemies) {
-            enemy->m_Transform.translation.x += dx;
-            enemy->m_Transform.translation.y += dy;
-        }
-        
-        // 3. 【關鍵】同步更新所有的「路徑節點座標」
+        // 同步所有路徑節點
         for (auto& coord : m_PathCoords) {
             coord.first += dx;
             coord.second += dy;
         }
+        // 同步所有已經在場上的敵人
+        for (auto& enemy : m_Enemies) {
+            enemy->m_Transform.translation.x += dx;
+            enemy->m_Transform.translation.y += dy;
+        }
     }
 
-    // 更新每個敵人的 AI 邏輯 (朝著當前最新的路徑節點前進)
+    // 3. 更新所有敵人的 AI 狀態 (整個 Update 函數只能呼叫這裡一次！)
     for (auto& enemy : m_Enemies) {
         enemy->Update(m_PathCoords);
+    }
+
+    // 4. 記憶體回收
+    for (auto it = m_Enemies.begin(); it != m_Enemies.end(); ) {
+        if ((*it)->HasReachedBase()) {
+            m_Renderer.RemoveChild(*it);
+            it = m_Enemies.erase(it);
+        } else {
+            ++it;
+        }
     }
 
     m_Renderer.Update();
