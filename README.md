@@ -37,3 +37,8 @@
    ```bash
    ./build/REPLACE_WITH_YOUR_PROJECT_NAME
    ```
+
+## 進度表
+
+| 週次 | 目標狀態 | 目標 |
+| 2 | [ ] | all |
