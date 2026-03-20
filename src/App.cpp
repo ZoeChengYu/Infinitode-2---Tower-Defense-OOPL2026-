@@ -1,6 +1,8 @@
 #include "App.hpp"
 #include <fstream>   // 加入這個用來讀取檔案
 #include <sstream>   // 加入這個用來切割字串
+#include <queue>      // BFS 需要用到佇列
+#include <algorithm>  // 需要用到 std::reverse
 #include <vector>
 #include <string>
 #include "Util/AtlasLoader.hpp"
@@ -120,21 +122,20 @@ void App::Start() {
         
     }
     // ---------------------------------------------------------
-    // === 自動尋路系統 (Pathfinding) ===
+    // === 自動尋路系統 (BFS 廣度優先搜尋) ===
     // ---------------------------------------------------------
-    
-    // 1. 建立一個 2D 陣列來記錄「這格是不是走過了」，避免敵人原地打轉
-    std::vector<std::vector<bool>> visited(
-        rowCount, std::vector<bool>(columnCount, false));
-    
-    // 定義哪些代碼是合法可以走的道路
+
+    // 1. 記錄這格是否走過
+    std::vector<std::vector<bool>> visited(rowCount, std::vector<bool>(columnCount, false));
+
+    // 2. 記錄每一格是「從哪一格走過來的」，用來回溯整條路線
+    std::vector<std::vector<std::pair<int, int>>> parent(rowCount, std::vector<std::pair<int, int>>(columnCount, {-1, -1}));
+
     std::vector<std::string> walkableTileCodes =
         {"R_H0","R_HV","R_00", "R_HT", "R_HD", "R_V0", "R_VR", "R_VL", "R_LD","R_RD", "R_TL","R_TR", "HOME"};
 
-    int spawnColumn = -1;
-    int spawnRow = -1;
+    int spawnColumn = -1, spawnRow = -1;
 
-    // 2. 尋找起點 (EP)
     for (int row = 0; row < rowCount; row++) {
         for (int column = 0; column < columnCount; column++) {
             if (mapGrid[row][column] == "EMPT") {
@@ -146,82 +147,82 @@ void App::Start() {
     }
 
     if (spawnColumn != -1 && spawnRow != -1) {
-        int currentColumn = spawnColumn;
-        int currentRow = spawnRow;
-        
-        // 將陣列索引 (gridX, gridY) 轉換為畫面座標 (posX, posY) 的 Lambda 匿名函數
-        // 這邊直接套用你剛剛寫的完美置中數學！
         auto getWorldPosition = [&](int gridColumn, int gridRow) {
-            float worldX =
-                mapOriginX + (gridColumn * tileSize) + (tileSize / 2.0F);
-            float worldY =
-                mapOriginY - (gridRow * tileSize) - (tileSize / 2.0F);
+            float worldX = mapOriginX + (gridColumn * tileSize) + (tileSize / 2.0F);
+            float worldY = mapOriginY - (gridRow * tileSize) - (tileSize / 2.0F);
             return std::make_pair(worldX, worldY);
         };
 
-        // 把起點加入路徑
-        m_PathWorldPositions.push_back(
-            getWorldPosition(currentColumn, currentRow));
-        visited[currentRow][currentColumn] = true;
+        // 使用 Queue 來進行 BFS 蔓延搜尋
+        std::queue<std::pair<int, int>> q;
+        q.push({spawnColumn, spawnRow});
+        visited[spawnRow][spawnColumn] = true;
 
-        // 定義搜尋方向：右, 下, 左, 上
         int columnOffsets[] = {1, 0, -1, 0};
         int rowOffsets[] = {0, 1, 0, -1};
 
-        bool reachedBase = false;
+        int targetCol = -1, targetRow = -1;
 
-        // 3. 開始追蹤路徑
-        while (!reachedBase) {
-            bool moved = false;
-            
-            // 檢查上下左右四個相鄰的格子
+        // 3. 開始搜尋
+        while (!q.empty()) {
+            auto current = q.front();
+            q.pop();
+
+            int currCol = current.first;
+            int currRow = current.second;
+
+            // 如果找到主塔，記錄並提早結束搜尋
+            if (mapGrid[currRow][currCol] == "HOME") {
+                targetCol = currCol;
+                targetRow = currRow;
+                break;
+            }
+
             for (int i = 0; i < 4; i++) {
-                int nextColumn = currentColumn + columnOffsets[i];
-                int nextRow = currentRow + rowOffsets[i];
-                
-                // 檢查是否超出地圖邊界
-                if (nextColumn >= 0 && nextColumn < columnCount &&
-                    nextRow >= 0 && nextRow < rowCount) {
-                    
-                    // 取得相鄰格子的代碼
-                    std::string nextTileCode = mapGrid[nextRow][nextColumn];
-                    
-                    // 如果這格還沒走過，而且它是合法道路或是主塔
-                    bool isWalkable =
-                        std::find(walkableTileCodes.begin(),
-                                  walkableTileCodes.end(),
-                                  nextTileCode) != walkableTileCodes.end();
-                    
-                    if (!visited[nextRow][nextColumn] && isWalkable) {
-                        // 決定要走到這格
-                        currentColumn = nextColumn;
-                        currentRow = nextRow;
-                        visited[currentRow][currentColumn] = true; // 標記為已走過
-                        
-                        // 轉換為實際座標並存入路徑清單
-                        m_PathWorldPositions.push_back(
-                            getWorldPosition(currentColumn, currentRow));
-                        moved = true;
-                        
-                        // 如果這格是主塔 (HW)，尋路結束！
-                        if (nextTileCode == "HOME") {
-                            reachedBase = true;
-                            LOG_TRACE("尋路成功！已找到抵達主塔的路徑。");
-                        }
-                        
-                        break; // 已經找到下一步了，跳出 for 迴圈，繼續 while 往前走
+                int nextCol = currCol + columnOffsets[i];
+                int nextRow = currRow + rowOffsets[i];
+
+                if (nextCol >= 0 && nextCol < columnCount && nextRow >= 0 && nextRow < rowCount) {
+                    std::string nextTileCode = mapGrid[nextRow][nextCol];
+                    bool isWalkable = std::find(walkableTileCodes.begin(), walkableTileCodes.end(), nextTileCode) != walkableTileCodes.end();
+
+                    if (!visited[nextRow][nextCol] && isWalkable) {
+                        visited[nextRow][nextCol] = true;
+                        parent[nextRow][nextCol] = {currCol, currRow}; // 記錄是從哪裡蔓延過來的
+                        q.push({nextCol, nextRow});
                     }
                 }
             }
-            
-            // 如果四個方向都沒路走，代表遇到死胡同
-            if (!moved) {
-                LOG_ERROR("尋路失敗：遇到死胡同，請檢查 map.txt 的道路是否斷線！");
-                break;
+        }
+
+        // 4. 回溯路徑 (從主塔一路倒推回起點)
+        if (targetCol != -1 && targetRow != -1) {
+            std::vector<std::pair<int, int>> pathReversed;
+            int currC = targetCol;
+            int currR = targetRow;
+
+            while (currC != spawnColumn || currR != spawnRow) {
+                pathReversed.push_back({currC, currR});
+                auto p = parent[currR][currC];
+                currC = p.first;
+                currR = p.second;
             }
+            pathReversed.push_back({spawnColumn, spawnRow});
+
+            // 反轉陣列，變成從起點到終點
+            std::reverse(pathReversed.begin(), pathReversed.end());
+
+            // 轉換成畫面座標
+            for (auto& p : pathReversed) {
+                m_PathWorldPositions.push_back(getWorldPosition(p.first, p.second));
+            }
+
+            LOG_TRACE("尋路成功！已找到抵達主塔的最短路徑。");
+        } else {
+            LOG_ERROR("尋路失敗：無法抵達主塔！");
         }
     } else {
-        LOG_ERROR("尋路失敗：地圖上找不到起點 (EP)！");
+        LOG_ERROR("尋路失敗：地圖上找不到起點 (EMPT)！");
     }
 
     m_CurrentState = State::UPDATE;
