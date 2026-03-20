@@ -26,17 +26,17 @@ public:
 
 private:
     State m_CurrentState = State::START;
-    std::shared_ptr<Util::AtlasLoader> m_AtlasImage;
-    std::shared_ptr<Util::GameObject> m_ImageObject =
+    std::shared_ptr<Util::AtlasLoader> m_AtlasLoader;
+    std::shared_ptr<Util::GameObject> m_DebugImageObject =
         std::make_shared<Util::GameObject>();
-    std::vector<std::shared_ptr<Util::GameObject>> m_Maplist;
+    std::vector<std::shared_ptr<Util::GameObject>> m_MapTiles;
     Util::Renderer m_Renderer;
-    std::vector<std::pair<float, float>> m_PathCoords;// 用來儲存從起點到終點的所有畫面座標 (posX, posY)
-    std::vector<std::shared_ptr<Enemy>> m_Enemies;     // 管理場上的敵人
+    std::vector<std::pair<float, float>> m_PathWorldPositions; // 用來儲存從起點到終點的所有畫面座標 (posX, posY)
+    std::vector<std::shared_ptr<Enemy>> m_Enemies; // 管理場上的敵人
 
     // --- 新增生怪控制變數 ---
-    int m_SpawnCooldown = 0;       // 目前的冷卻倒數
-    const int SPAWN_INTERVAL = 60; // 假設遊戲是 60 FPS，60 大約就是 1 秒生一隻
+    int m_SpawnCooldownFrames = 0;              // 目前的冷卻倒數
+    static constexpr int kSpawnIntervalFrames = 60; // 假設遊戲是 60 FPS，60 大約就是 1 秒生一隻
 };
 
 #endif
