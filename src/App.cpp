@@ -122,48 +122,45 @@ void App::Start() {
         
     }
     // ---------------------------------------------------------
-    // === 自動尋路系統 (BFS 廣度優先搜尋) ===
+    // === 自動尋路系統 (多起點 BFS) ===
     // ---------------------------------------------------------
-
-    // 1. 記錄這格是否走過
-    std::vector<std::vector<bool>> visited(rowCount, std::vector<bool>(columnCount, false));
-
-    // 2. 記錄每一格是「從哪一格走過來的」，用來回溯整條路線
-    std::vector<std::vector<std::pair<int, int>>> parent(rowCount, std::vector<std::pair<int, int>>(columnCount, {-1, -1}));
 
     std::vector<std::string> walkableTileCodes =
         {"R_H0","R_HV","R_00", "R_HT", "R_HD", "R_V0", "R_VR", "R_VL", "R_LD","R_RD", "R_TL","R_TR", "HOME"};
 
-    int spawnColumn = -1, spawnRow = -1;
-
+    // 1. 找出所有的起點 (EMPT)
+    std::vector<std::pair<int, int>> spawnPoints;
     for (int row = 0; row < rowCount; row++) {
         for (int column = 0; column < columnCount; column++) {
             if (mapGrid[row][column] == "EMPT") {
-                spawnColumn = column;
-                spawnRow = row;
-                break;
+                spawnPoints.push_back({column, row});
             }
         }
     }
 
-    if (spawnColumn != -1 && spawnRow != -1) {
-        auto getWorldPosition = [&](int gridColumn, int gridRow) {
-            float worldX = mapOriginX + (gridColumn * tileSize) + (tileSize / 2.0F);
-            float worldY = mapOriginY - (gridRow * tileSize) - (tileSize / 2.0F);
-            return std::make_pair(worldX, worldY);
-        };
+    auto getWorldPosition = [&](int gridColumn, int gridRow) {
+        float worldX = mapOriginX + (gridColumn * tileSize) + (tileSize / 2.0F);
+        float worldY = mapOriginY - (gridRow * tileSize) - (tileSize / 2.0F);
+        return std::make_pair(worldX, worldY);
+    };
 
-        // 使用 Queue 來進行 BFS 蔓延搜尋
+    // 2. 針對「每一個」起點都跑一次 BFS
+    for (size_t pIndex = 0; pIndex < spawnPoints.size(); pIndex++) {
+        int startCol = spawnPoints[pIndex].first;
+        int startRow = spawnPoints[pIndex].second;
+
+        // 每次尋路都要重新宣告乾淨的 visited 和 parent
+        std::vector<std::vector<bool>> visited(rowCount, std::vector<bool>(columnCount, false));
+        std::vector<std::vector<std::pair<int, int>>> parent(rowCount, std::vector<std::pair<int, int>>(columnCount, {-1, -1}));
+
         std::queue<std::pair<int, int>> q;
-        q.push({spawnColumn, spawnRow});
-        visited[spawnRow][spawnColumn] = true;
+        q.push({startCol, startRow});
+        visited[startRow][startCol] = true;
 
         int columnOffsets[] = {1, 0, -1, 0};
         int rowOffsets[] = {0, 1, 0, -1};
-
         int targetCol = -1, targetRow = -1;
 
-        // 3. 開始搜尋
         while (!q.empty()) {
             auto current = q.front();
             q.pop();
@@ -171,7 +168,6 @@ void App::Start() {
             int currCol = current.first;
             int currRow = current.second;
 
-            // 如果找到主塔，記錄並提早結束搜尋
             if (mapGrid[currRow][currCol] == "HOME") {
                 targetCol = currCol;
                 targetRow = currRow;
@@ -188,41 +184,39 @@ void App::Start() {
 
                     if (!visited[nextRow][nextCol] && isWalkable) {
                         visited[nextRow][nextCol] = true;
-                        parent[nextRow][nextCol] = {currCol, currRow}; // 記錄是從哪裡蔓延過來的
+                        parent[nextRow][nextCol] = {currCol, currRow};
                         q.push({nextCol, nextRow});
                     }
                 }
             }
         }
 
-        // 4. 回溯路徑 (從主塔一路倒推回起點)
+        // 3. 回溯並儲存這條獨立的路徑
         if (targetCol != -1 && targetRow != -1) {
             std::vector<std::pair<int, int>> pathReversed;
             int currC = targetCol;
             int currR = targetRow;
 
-            while (currC != spawnColumn || currR != spawnRow) {
+            while (currC != startCol || currR != startRow) {
                 pathReversed.push_back({currC, currR});
                 auto p = parent[currR][currC];
                 currC = p.first;
                 currR = p.second;
             }
-            pathReversed.push_back({spawnColumn, spawnRow});
-
-            // 反轉陣列，變成從起點到終點
+            pathReversed.push_back({startCol, startRow});
             std::reverse(pathReversed.begin(), pathReversed.end());
 
-            // 轉換成畫面座標
+            std::vector<std::pair<float, float>> singlePathWorldPositions;
             for (auto& p : pathReversed) {
-                m_PathWorldPositions.push_back(getWorldPosition(p.first, p.second));
+                singlePathWorldPositions.push_back(getWorldPosition(p.first, p.second));
             }
 
-            LOG_TRACE("尋路成功！已找到抵達主塔的最短路徑。");
+            // 把這條路線加入「所有路線」的清單中
+            m_AllPathsWorldPositions.push_back(singlePathWorldPositions);
+            LOG_TRACE("尋路成功！已找到第 " + std::to_string(pIndex + 1) + " 個敵洞的路徑。");
         } else {
-            LOG_ERROR("尋路失敗：無法抵達主塔！");
+            LOG_ERROR("尋路失敗：第 " + std::to_string(pIndex + 1) + " 個敵洞無法抵達主塔！");
         }
-    } else {
-        LOG_ERROR("尋路失敗：地圖上找不到起點 (EMPT)！");
     }
 
     m_CurrentState = State::UPDATE;
@@ -238,40 +232,48 @@ void App::Update() {
     if (Util::Input::IsKeyDown(Util::Keycode::W)) dy += speed;
     if (Util::Input::IsKeyDown(Util::Keycode::S)) dy -= speed;
 
-    // 1. 自動生怪邏輯
-    if (!m_PathWorldPositions.empty()) {
+    // 1. 自動生怪邏輯 (每個洞口都生一隻)
+    if (!m_AllPathsWorldPositions.empty()) {
         if (m_SpawnCooldownFrames > 0) {
             m_SpawnCooldownFrames--;
         } else {
             auto enemyImage = m_AtlasLoader->Get("enemy-type-regular");
-            auto enemy = std::make_shared<Enemy>(enemyImage, m_PathWorldPositions);
-            m_Enemies.push_back(enemy);
-            m_Renderer.AddChild(enemy);
-            m_SpawnCooldownFrames = kSpawnIntervalFrames; // 重置冷卻時間
+
+            // 走訪所有算出來的路線，每條路都派出一隻怪
+            for (size_t i = 0; i < m_AllPathsWorldPositions.size(); i++) {
+                auto enemy = std::make_shared<Enemy>(enemyImage, m_AllPathsWorldPositions[i], i);
+                m_Enemies.push_back(enemy);
+                m_Renderer.AddChild(enemy);
+            }
+
+            m_SpawnCooldownFrames = 60; // 這裡假設你本來的 kSpawnIntervalFrames 是 60
         }
     }
 
     if (dx != 0.0F || dy != 0.0F) {
-        // 移動地圖
         for (auto& tile : m_MapTiles) {
             tile->m_Transform.translation.x += dx;
             tile->m_Transform.translation.y += dy;
         }
-        // 同步所有路徑節點
-        for (auto& coord : m_PathWorldPositions) {
-            coord.first += dx;
-            coord.second += dy;
+
+        // 同步【所有的】路徑節點
+        for (auto& path : m_AllPathsWorldPositions) {
+            for (auto& coord : path) {
+                coord.first += dx;
+                coord.second += dy;
+            }
         }
-        // 同步所有已經在場上的敵人
+
         for (auto& enemy : m_Enemies) {
             enemy->m_Transform.translation.x += dx;
             enemy->m_Transform.translation.y += dy;
         }
     }
 
-    // 3. 更新所有敵人的 AI 狀態 (整個 Update 函數只能呼叫這裡一次！)
+    // 3. 更新所有敵人的 AI 狀態
     for (auto& enemy : m_Enemies) {
-        enemy->Update(m_PathWorldPositions);
+        // 依照這隻敵人身上的 index，餵給他正確的那條路徑
+        enemy->Update(m_AllPathsWorldPositions[enemy->GetPathIndex()]);
     }
 
     // 4. 記憶體回收

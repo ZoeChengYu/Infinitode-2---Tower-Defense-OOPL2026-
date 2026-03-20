@@ -31,7 +31,8 @@ private:
         std::make_shared<Util::GameObject>();
     std::vector<std::shared_ptr<Util::GameObject>> m_MapTiles;
     Util::Renderer m_Renderer;
-    std::vector<std::pair<float, float>> m_PathWorldPositions; // 用來儲存從起點到終點的所有畫面座標 (posX, posY)
+    // 把原本的 m_PathWorldPositions 改成二維陣列
+    std::vector<std::vector<std::pair<float, float>>> m_AllPathsWorldPositions; // 把原本的 m_PathWorldPositions 改成二維陣列
     std::vector<std::shared_ptr<Enemy>> m_Enemies; // 管理場上的敵人
 
     // --- 新增生怪控制變數 ---

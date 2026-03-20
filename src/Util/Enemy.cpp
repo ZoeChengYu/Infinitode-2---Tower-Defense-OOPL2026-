@@ -1,14 +1,15 @@
 #include "Util/Enemy.hpp"
 #include <cmath> // 為了使用 std::sqrt
 
-Enemy::Enemy(std::shared_ptr<Util::Image> image, const std::vector<std::pair<float, float>>& path) {
+Enemy::Enemy(std::shared_ptr<Util::Image> image, const std::vector<std::pair<float, float>>& path, int pathIndex)
+    : m_PathIndex(pathIndex) { // <--- 存下索引值
+
     SetDrawable(image);
-    // 👇 新增這行！將敵人的渲染層級拉高，確保它永遠蓋在地圖上方
-    SetZIndex(10);
+    SetZIndex(10); // 確保圖層在地圖之上
+
     if (!path.empty()) {
-        // 將敵人初始位置設定在路徑的第一個點 (EP)
         m_Transform.translation = {path[0].first, path[0].second};
-        m_Transform.scale = {0.25F, 0.25F}; // 配合地圖的縮放比例
+        m_Transform.scale = {0.25F, 0.25F};
     }
 }
 

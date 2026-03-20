@@ -9,18 +9,20 @@
 
 class Enemy : public Util::GameObject {
 public:
-    // 傳入敵人的圖片，以及剛剛算出來的路徑座標清單
-    Enemy(std::shared_ptr<Util::Image> image, const std::vector<std::pair<float, float>>& path);
-    
-    // 每一幀都會呼叫，用來更新位置
+    // 建構子多傳入一個 pathIndex (路徑索引)
+    Enemy(std::shared_ptr<Util::Image> image, const std::vector<std::pair<float, float>>& path, int pathIndex);
+
     void Update(const std::vector<std::pair<float, float>>& currentPath);
-    
     bool HasReachedBase() const { return m_ReachedBase; }
 
+    // 讓 App 知道這隻怪目前在走哪一條路
+    int GetPathIndex() const { return m_PathIndex; }
+
 private:
-    size_t m_CurrentTargetIndex = 0; // 目前要前往的節點索引
-    float m_Speed = 3.0F;            // 敵人的移動速度
-    bool m_ReachedBase = false;      // 是否已抵達終點
+    int m_PathIndex = 0; // 新增這行：記錄這是第幾條路線的怪
+    size_t m_CurrentTargetIndex = 0;
+    float m_Speed = 3.0F;
+    bool m_ReachedBase = false;
 };
 
 #endif
