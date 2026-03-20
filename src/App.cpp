@@ -52,16 +52,23 @@ void App::Start() {
     const int columnCount = static_cast<int>(mapGrid[0].size());
 
     // 你的字典保持不變
-    std::unordered_map<std::string, std::string> textureDict = {
+    //tile-type-road-上右下左
+    std::unordered_map<std::string, std::string> tileTextureKeys = {
         {"NOMO",   "tile-type-platform"},       // 普通建塔平台 (深灰色)
         {"EMPT",   "tile-type-spawn-portal"},   // 敵洞 (紫色漩渦)
         {"HOME",   "tile-type-target-base"},    // 主塔 (藍色六角形)
-        {"R_H0",  "tile-type-road-xoxo"},      // 水平道路
-        {"R_V0",  "tile-type-road-oxox"},      // 垂直道路
+        {"R_HV",  "tile-type-road-oooo"},       // 四方來財
+        {"R_H0",  "tile-type-road-xoxo"},       // 水平道路
+        {"R_HT",  "tile-type-road-ooxo"},       // 水平上岔路
+        {"R_HD",  "tile-type-road-xooo"},       // 水平下岔路
+        {"R_V0",  "tile-type-road-oxox"},      // 垂直道
+        {"R_VR",  "tile-type-road-ooox"},      // 垂直右岔路
+        {"R_VL",  "tile-type-road-oxox"},      // 垂直左岔路
         {"R_LD", "tile-type-road-xxoo"},      // 轉角 (左接下)
         {"R_RD", "tile-type-road-xoox"},      // 轉角 (右接下)
         {"R_TL", "tile-type-road-oxxo"},       // 轉角 (上接左)
-        {"R_TR", "tile-type-road-ooxx"}        // 轉角 (上接右)
+        {"R_TR", "tile-type-road-ooxx"},        // 轉角 (上接右)
+        {"R_00", "tile-type-road-xxxx"}        // 孤兒
     };
 
     const float tileScale = 0.25F;
@@ -121,7 +128,8 @@ void App::Start() {
         rowCount, std::vector<bool>(columnCount, false));
     
     // 定義哪些代碼是合法可以走的道路
-    std::vector<std::string> walkableTileCodes = {"R_H0", "R_V0", "R_LD","R_RD", "R_TL","R_TR", "HOME"};
+    std::vector<std::string> walkableTileCodes =
+        {"R_H0","R_HV","R_00", "R_HT", "R_HD", "R_V0", "R_VR", "R_VL", "R_LD","R_RD", "R_TL","R_TR", "HOME"};
 
     int spawnColumn = -1;
     int spawnRow = -1;
@@ -249,7 +257,7 @@ void App::Update() {
             tile->m_Transform.translation.y += dy;
         }
         // 同步所有路徑節點
-        for (auto& coord : m_PathCoords) {
+        for (auto& coord : m_PathWorldPositions) {
             coord.first += dx;
             coord.second += dy;
         }
