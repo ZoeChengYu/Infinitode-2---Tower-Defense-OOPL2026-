@@ -21,7 +21,7 @@ public:
 private:
     int m_PathIndex = 0; // 新增這行：記錄這是第幾條路線的怪
     size_t m_CurrentTargetIndex = 0;
-    float m_Speed = 3.0F;
+    float m_Speed = 1.0F;
     bool m_ReachedBase = false;
 };
 
