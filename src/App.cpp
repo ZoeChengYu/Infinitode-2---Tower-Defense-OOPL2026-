@@ -246,7 +246,7 @@ void App::Update() {
                 m_Renderer.AddChild(enemy);
             }
 
-            m_SpawnCooldownFrames = 60; // 這裡假設你本來的 kSpawnIntervalFrames 是 60
+            m_SpawnCooldownFrames = 200; // 這裡假設你本來的 kSpawnIntervalFrames 是 60
         }
     }
 
