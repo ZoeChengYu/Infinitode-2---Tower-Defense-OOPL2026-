@@ -227,10 +227,10 @@ void App::Update() {
     float dx = 0.0F;
     float dy = 0.0F;
 
-    if (Util::Input::IsKeyPressed(Util::Keycode::A)) dx -= speed;
-    if (Util::Input::IsKeyPressed(Util::Keycode::D)) dx += speed;
-    if (Util::Input::IsKeyPressed(Util::Keycode::W)) dy += speed;
-    if (Util::Input::IsKeyPressed(Util::Keycode::S)) dy -= speed;
+    if (Util::Input::IsKeyPressed(Util::Keycode::A)) dx += speed;
+    if (Util::Input::IsKeyPressed(Util::Keycode::D)) dx -= speed;
+    if (Util::Input::IsKeyPressed(Util::Keycode::W)) dy -= speed;
+    if (Util::Input::IsKeyPressed(Util::Keycode::S)) dy += speed;
 
     // 1. 自動生怪邏輯 (每個洞口都生一隻)
     if (!m_AllPathsWorldPositions.empty()) {
