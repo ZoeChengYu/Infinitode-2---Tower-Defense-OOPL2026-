@@ -18,6 +18,8 @@ public:
 
     State GetCurrentState() const { return m_CurrentState; }
 
+    int getkSpawnIntervalFrames();
+
     void Start();
 
     void Update();
@@ -37,8 +39,7 @@ private:
 
     // --- 新增生怪控制變數 ---
     int m_SpawnCooldownFrames = 0;              // 目前的冷卻倒數
-    static constexpr int kSpawnIntervalFrames = 200; // 假設遊戲是 60 FPS，60 大約就是 1 秒生一隻
-    float m_MapZoom = 1.0F; // 目前地圖縮放倍率（1.0 = 原始大小）
+    static constexpr int kSpawnIntervalFrames = 120; // 假設遊戲是 60 FPS，60 大約就是 1 秒生一隻
 };
 
 #endif

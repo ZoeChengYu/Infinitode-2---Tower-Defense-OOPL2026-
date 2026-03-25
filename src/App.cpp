@@ -57,6 +57,10 @@ const std::unordered_set<std::string> kWalkableTileCodes = {
 };
 } // namespace
 
+int App::getkSpawnIntervalFrames(){
+    return kSpawnIntervalFrames;
+}
+
 void App::Start() {
     LOG_TRACE("Start");
 
@@ -314,7 +318,8 @@ void App::Update() {
                 m_Enemies.push_back(enemy);
                 m_Renderer.AddChild(enemy);
             }
-            m_SpawnCooldownFrames = kSpawnIntervalFrames;
+
+            m_SpawnCooldownFrames = getkSpawnIntervalFrames(); // 這裡假設你本來的 kSpawnIntervalFrames 是 60
         } else {
             --m_SpawnCooldownFrames;
         }
