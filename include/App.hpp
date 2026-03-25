@@ -20,6 +20,8 @@ public:
 
     int getkSpawnIntervalFrames();
 
+    int setkSpawnIntervalFrames(int diffIntervalFrames);
+
     void Start();
 
     void Update();

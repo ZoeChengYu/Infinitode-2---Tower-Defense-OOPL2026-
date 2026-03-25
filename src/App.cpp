@@ -61,6 +61,11 @@ int App::getkSpawnIntervalFrames(){
     return kSpawnIntervalFrames;
 }
 
+int App::setkSpawnIntervalFrames(int diffIntervalFrames)
+{
+    return kSpawnIntervalFrames+diffIntervalFrames;
+}
+
 void App::Start() {
     LOG_TRACE("Start");
 
