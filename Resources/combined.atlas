@@ -2603,3 +2603,11 @@ upgrade-arrow-up
 bounds:2697,502,28,21
 xp-orb
 bounds:2563,327,16,16
+color-regular
+bounds:1417,960,2,2
+color-fast
+bounds:4061,3660,2,2
+color-toxic
+bounds:2296,599,2,2
+color-icy
+bounds:1507,470,2,2

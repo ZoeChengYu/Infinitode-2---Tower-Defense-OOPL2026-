@@ -174,9 +174,7 @@ void App::Start() {
         std::string typeStr;
         int gx, gy;
 
-        // 先讀取類型與座標
         if (ss >> typeStr >> gx >> gy) {
-            // 接著把後面剩下的所有數字(ID)讀進 vector
             std::vector<int> targetIds;
             int id;
             while (ss >> id) {
@@ -184,12 +182,13 @@ void App::Start() {
             }
 
             GateType gType = (typeStr == "GATE_H") ? GateType::HORIZONTAL : GateType::VERTICAL;
+
+            // ★ 修正 1：換成圖集中那兩張「亮藍色輪廓」的外框圖片
             std::string texName = (gType == GateType::HORIZONTAL) ? "gate-barrier-type-horizontal" : "gate-barrier-type-vertical";
 
             if (auto gateImage = m_AtlasLoader->Get(texName)) {
                 auto gate = std::make_shared<Gate>(gateImage, gType, targetIds, gx, gy);
 
-                // 計算閘門的中心位置
                 auto [world1X, world1Y] = toWorld(gx, gy);
                 int nextX = gx + (gType == GateType::VERTICAL ? 1 : 0);
                 int nextY = gy + (gType == GateType::HORIZONTAL ? 1 : 0);
@@ -201,37 +200,50 @@ void App::Start() {
                 gate->m_Transform.translation = {gateWorldX, gateWorldY};
                 gate->m_Transform.scale = {kTileScale, kTileScale};
 
-                // --- 動態計算每個圖示的排版位置 ---
+                // ★ 修正 2：動態計算「連續能量棒」的排版與強制拉伸縮放
                 int iconCount = targetIds.size();
-                float spacing = tileSize * 0.2f;
-                float startOffset = -spacing * (iconCount - 1) / 2.0f;
+                float totalBarLength = tileSize * 0.75f; // 能量棒總長度佔格子的 75% (剛好塞進外框)
+                float segmentLength = totalBarLength / iconCount; // 每一小段顏色的長度
+                float barThickness = tileSize * 0.15f; // 能量棒的粗細
+
+                // 起始點偏移 (讓整條能量棒完美置中)
+                float startOffset = -(totalBarLength / 2.0f) + (segmentLength / 2.0f);
 
                 for (int i = 0; i < iconCount; ++i) {
-                    // 根據 ID 決定要拿哪張圖
+                    // ★ 修正：改用我們剛剛在 atlas 定義的純色方塊
                     std::string texNameForBar;
-                    if (targetIds[i] == 1) texNameForBar = "enemy-type-regular";
-                    else if (targetIds[i] == 2) texNameForBar = "enemy-type-fast";
-                    else texNameForBar = "enemy-type-toxic";
+                    if (targetIds[i] == 1) texNameForBar = "color-regular"; // 綠色
+                    else if (targetIds[i] == 2) texNameForBar = "color-fast"; // 黃色
+                    else if (targetIds[i] == 3) texNameForBar = "color-icy"; // 藍色
+                    else texNameForBar = "color-toxic"; // 紫色
 
-                    // IDE 提示修復：將變數宣告移入 if 條件內，並統一名稱為 colorBlockImage
                     if (auto colorBlockImage = m_AtlasLoader->Get(texNameForBar)) {
                         auto colorObj = std::make_shared<Util::GameObject>();
                         colorObj->SetDrawable(colorBlockImage);
-                        colorObj->SetZIndex(6); // 畫在閘門上方
+                        colorObj->SetZIndex(6); // 畫在深色閘門上方
 
-                        float currentOffset = startOffset + (i * spacing);
+                        // 計算當前這段顏色的中心位置
+                        float currentOffset = startOffset + (i * segmentLength);
                         float iconX = gateWorldX + (gType == GateType::HORIZONTAL ? currentOffset : 0.0f);
                         float iconY = gateWorldY + (gType == GateType::VERTICAL ? currentOffset : 0.0f);
 
                         colorObj->m_Transform.translation = {iconX, iconY};
-                        colorObj->m_Transform.scale = {kTileScale * 0.4f, kTileScale * 0.4f};
 
-                        // 將 GameObject 和 原圖 一起存入 ColorBar 結構中
+                        // 取得原始圖片的尺寸 (現在會是 2.0f)
+                        float imgSize = m_AtlasLoader->Getsize(texNameForBar);
+
+                        if (gType == GateType::HORIZONTAL) {
+                            // 橫向閘門：X 軸拉長成段長，Y 軸變成能量棒粗細
+                            colorObj->m_Transform.scale = { segmentLength / imgSize, barThickness / imgSize };
+                        } else {
+                            // 直向閘門：Y 軸拉長成段長，X 軸變成能量棒粗細
+                            colorObj->m_Transform.scale = { barThickness / imgSize, segmentLength / imgSize };
+                        }
+
                         gate->m_ColorBars.push_back({colorObj, colorBlockImage});
                         m_Renderer.AddChild(colorObj);
                     }
                 }
-                // ---------------------------------
 
                 m_Gates.push_back(gate);
                 m_Renderer.AddChild(gate);
