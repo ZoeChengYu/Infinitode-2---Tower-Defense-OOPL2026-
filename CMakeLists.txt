@@ -36,6 +36,8 @@ add_executable(${PROJECT_NAME}
     ${SRC_DIR}/main.cpp
     ${SRC_FILES}
     ${HEADER_FILES}
+        include/Util/Gate.hpp
+        src/Util/Gate.cpp
 )
 
 if(MSVC)

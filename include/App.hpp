@@ -7,6 +7,7 @@
 #include "Util/GameObject.hpp"
 #include "Util/Renderer.hpp"
 #include "Util/Enemy.hpp"
+#include "Util/Gate.hpp"
 
 class App {
 public:
@@ -21,6 +22,8 @@ public:
     int getkSpawnIntervalFrames();
 
     int setkSpawnIntervalFrames(int diffIntervalFrames);
+
+    bool HasClosedGate(int fromX, int fromY, int toX, int toY) const;
 
     void Start();
 
@@ -43,6 +46,8 @@ private:
     int m_SpawnCooldownFrames = 0;              // 目前的冷卻倒數
     static constexpr int kSpawnIntervalFrames = 120; // 假設遊戲是 60 FPS，60 大約就是 1 秒生一隻
     float m_MapZoom = 1.0F; // 目前地圖縮放倍率（1.0 = 原始大小）
+
+    std::vector<std::shared_ptr<Gate>> m_Gates;
 };
 
 #endif

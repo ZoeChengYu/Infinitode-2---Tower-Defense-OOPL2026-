@@ -66,6 +66,27 @@ int App::setkSpawnIntervalFrames(int diffIntervalFrames)
     return kSpawnIntervalFrames+diffIntervalFrames;
 }
 
+bool App::HasClosedGate(int fromX, int fromY, int toX, int toY) const {
+    for (const auto& gate : m_Gates) {
+        if (!gate->IsClosed()) continue; // 打開的閘門不擋路
+
+        if (gate->GetType() == GateType::VERTICAL) {
+            // 直向閘門擋在 (gx, gy) 和 (gx+1, gy) 之間
+            if (gate->GetGridY() == fromY && gate->GetGridY() == toY) {
+                int minX = std::min(fromX, toX);
+                if (gate->GetGridX() == minX) return true;
+            }
+        } else {
+            // 橫向閘門擋在 (gx, gy) 和 (gx, gy+1) 之間
+            if (gate->GetGridX() == fromX && gate->GetGridX() == toX) {
+                int minY = std::min(fromY, toY);
+                if (gate->GetGridY() == minY) return true;
+            }
+        }
+    }
+    return false;
+}
+
 void App::Start() {
     LOG_TRACE("Start");
 
@@ -87,33 +108,44 @@ void App::Start() {
     }
 
     std::vector<std::vector<std::string>> mapGrid; // y=列, x=欄
+    std::vector<std::string> gateLines;            // 暫存閘門資料
     int gridWidth = -1; // -1 代表寬度尚未決定
     std::string line;
 
     // 3. 逐行解析地圖 並驗證矩形格式
-    while (std::getline(mapFile, line)) {
-        std::stringstream ss(line);
-        std::vector<std::string> yTiles; // 單一列代碼
-        // 以空白切詞
-        for (std::string tileCode; ss >> tileCode;) {
-            yTiles.push_back(tileCode);
-        }
+    bool parsingGrid = true; // 判斷現在在讀什麼
 
-        // 空行略過
-        if (yTiles.empty()) {
+    while (std::getline(mapFile, line)) {
+        if (line == "---") {
+            parsingGrid = false; // 遇到分隔線，切換為暫存閘門資料
             continue;
         }
 
-        // 第一列決定寬度 後續列必須一致
-        if (gridWidth == -1) {
-            gridWidth = static_cast<int>(yTiles.size());
-        } else if (static_cast<int>(yTiles.size()) != gridWidth) {
-            LOG_ERROR("地圖每一列寬度不一致。");
-            return;
-        }
+        if (parsingGrid) {
+            std::stringstream ss(line);
+            std::vector<std::string> yTiles; // 單一列代碼
+            // 以空白切詞
+            for (std::string tileCode; ss >> tileCode;) {
+                yTiles.push_back(tileCode);
+            }
 
-        // move 避免複製整列字串
-        mapGrid.push_back(std::move(yTiles));
+            // 空行略過
+            if (yTiles.empty()) continue;
+
+            // 第一列決定寬度 後續列必須一致
+            if (gridWidth == -1) {
+                gridWidth = static_cast<int>(yTiles.size());
+            } else if (static_cast<int>(yTiles.size()) != gridWidth) {
+                LOG_ERROR("地圖每一列寬度不一致。");
+                return;
+            }
+
+            // move 避免複製整列字串
+            mapGrid.push_back(std::move(yTiles));
+        } else {
+            // 先把閘門的字串存起來，等 toWorld 定義好再處理
+            gateLines.push_back(line);
+        }
     }
 
     // 空地圖或非法寬度直接中止
@@ -131,10 +163,39 @@ void App::Start() {
 
     // 格子座標轉世界座標 取格子中心點
     auto toWorld = [&](int x, int y) -> WorldPos {
-        const float worldX = mapOriginX + (static_cast<float>(x) * tileSize) + (tileSize / 2.0F); // 左邊界 + x格偏移 + 半格 取得該格中心X
-        const float worldY = mapOriginY - (static_cast<float>(y) * tileSize) - (tileSize / 2.0F); // 上邊界 - y格偏移 - 半格 因螢幕Y向下為正
+        const float worldX = mapOriginX + (static_cast<float>(x) * tileSize) + (tileSize / 2.0F);
+        const float worldY = mapOriginY - (static_cast<float>(y) * tileSize) - (tileSize / 2.0F);
         return {worldX, worldY};
     };
+
+    // 4.5. 現在 toWorld 定義好了，可以開始建立閘門物件
+    for (const auto& gateLine : gateLines) {
+        std::stringstream ss(gateLine);
+        std::string typeStr;
+        int gx, gy;
+
+        if (ss >> typeStr >> gx >> gy) {
+            GateType gType = (typeStr == "GATE_H") ? GateType::HORIZONTAL : GateType::VERTICAL;
+            std::string texName = (gType == GateType::HORIZONTAL) ? "gate-barrier-type-horizontal" : "gate-barrier-type-vertical";
+
+            // IDE 提示修復：把 gateImage 的宣告移到 if 條件內
+            if (auto gateImage = m_AtlasLoader->Get(texName)) {
+                auto gate = std::make_shared<Gate>(gateImage, gType, gx, gy);
+
+                // 計算位置：放在兩格的中心點
+                auto [world1X, world1Y] = toWorld(gx, gy);
+                int nextX = gx + (gType == GateType::VERTICAL ? 1 : 0);
+                int nextY = gy + (gType == GateType::HORIZONTAL ? 1 : 0);
+                auto [world2X, world2Y] = toWorld(nextX, nextY);
+
+                gate->m_Transform.translation = {(world1X + world2X) / 2.0f, (world1Y + world2Y) / 2.0f};
+                gate->m_Transform.scale = {kTileScale, kTileScale};
+
+                m_Gates.push_back(gate);
+                m_Renderer.AddChild(gate); // 畫到畫面上
+            }
+        }
+    }
 
     // 5. 單次掃描 同步建立地圖物件與收集出生點
     std::vector<GridPos> spawnPoints;
@@ -148,9 +209,7 @@ void App::Start() {
             }
 
             // 0000 視為空白格, 不建立物件
-            if (tileCode == "0000") {
-                continue;
-            }
+            if (tileCode == "0000") continue;
 
             // 查貼圖 key 查不到就略過該格
             const auto textureIt = kTileTextureByCode.find(tileCode);
@@ -160,39 +219,33 @@ void App::Start() {
             }
 
             // 取圖失敗只跳過該格
-            const auto tileImage = m_AtlasLoader->Get(textureIt->second);
-            if (!tileImage) {
+            if (auto tileImage = m_AtlasLoader->Get(textureIt->second)) {
+                auto tileObject = std::make_shared<Util::GameObject>();
+                tileObject->SetDrawable(tileImage);
+                tileObject->m_Transform.scale = {kTileScale, kTileScale};
+                const auto [worldX, worldY] = toWorld(x, y);
+                tileObject->m_Transform.translation = {worldX, worldY};
+
+                m_Renderer.AddChild(tileObject);
+                m_MapTiles.push_back(tileObject);
+            } else {
                 LOG_ERROR("找不到對應的圖片: " + textureIt->second);
-                continue;
             }
-
-            // 建立地塊物件並設定位置/縮放
-            auto tileObject = std::make_shared<Util::GameObject>();
-            tileObject->SetDrawable(tileImage);
-            tileObject->m_Transform.scale = {kTileScale, kTileScale};
-            const auto [worldX, worldY] = toWorld(x, y);
-            tileObject->m_Transform.translation = {worldX, worldY};
-
-            // Renderer 負責顯示, m_MapTiles 供後續平移/縮放
-            m_Renderer.AddChild(tileObject);
-            m_MapTiles.push_back(tileObject);
         }
     }
 
     // 6. BFS 尋路 start -> BASE___
-    // 原理 佇列先進先出會一層一層擴張 無權重圖中第一次抵達終點就是最短步數
-    auto findPathToBase = [&](GridPos start) {
-        std::vector<std::vector<bool>> visited(gridHeight, std::vector<bool>(gridWidth, false)); // 避免重複走回頭路與無限循環
-        std::vector<std::vector<GridPos>> parent(gridHeight, std::vector<GridPos>(gridWidth, {-1, -1})); // 記錄每格是從哪一格走來 供最後回溯路徑
+    // IDE 提示修復：將 start 改為 const reference 傳遞避免不必要的複製
+    auto findPathToBase = [&](const GridPos& start) {
+        std::vector<std::vector<bool>> visited(gridHeight, std::vector<bool>(gridWidth, false));
+        std::vector<std::vector<GridPos>> parent(gridHeight, std::vector<GridPos>(gridWidth, {-1, -1}));
 
-        // 1 起點入隊 代表第0層 並先標記已訪問
         std::queue<GridPos> q;
         q.push(start);
         visited[start.second][start.first] = true;
 
-        GridPos target = {-1, -1}; // -1 代表目前還沒找到可到達的 BASE___
+        GridPos target = {-1, -1};
 
-        // 2 逐層擴展 每次 pop 都是目前已知最短步數層級的節點
         while (!q.empty()) {
             const GridPos current = q.front();
             q.pop();
@@ -204,40 +257,33 @@ void App::Start() {
                 break;
             }
 
-            // 3 往四個方向嘗試延伸 只接受 合法座標 + 未拜訪 + 可行走地形
             for (const auto& [offsetX, offsetY] : kNeighborOffsets) {
                 const int nextX = currX + offsetX;
                 const int nextY = currY + offsetY;
 
-                const bool inBounds = nextX >= 0 && nextX < gridWidth && nextY >= 0 && nextY < gridHeight; // 邊界檢查
-                if (!inBounds || visited[nextY][nextX]) {
-                    continue;
-                }
+                const bool inBounds = nextX >= 0 && nextX < gridWidth && nextY >= 0 && nextY < gridHeight;
+                if (!inBounds || visited[nextY][nextX]) continue;
 
                 const std::string& nextTileCode = mapGrid[nextY][nextX];
-                if (kWalkableTileCodes.find(nextTileCode) == kWalkableTileCodes.end()) {
-                    continue;
-                }
+                if (kWalkableTileCodes.find(nextTileCode) == kWalkableTileCodes.end()) continue;
+
+                // 檢查閘門阻擋
+                if (HasClosedGate(currX, currY, nextX, nextY)) continue;
 
                 visited[nextY][nextX] = true;
-                parent[nextY][nextX] = current; // next 的前一格是 current 回溯時靠這個還原完整路徑
-                q.push({nextX, nextY}); // 入隊等待下一層處理 仍維持 BFS 層序特性
+                parent[nextY][nextX] = current;
+                q.push({nextX, nextY});
             }
         }
 
         std::vector<GridPos> path;
-        if (target.first == -1) {
-            return path; // 空路徑 代表此出生點無法連到主塔
-        }
+        if (target.first == -1) return path;
 
-        // 4 目前方向是 target -> start 先回溯收集 再 reverse 成 start -> target
         for (GridPos current = target;; current = parent[current.second][current.first]) {
             path.push_back(current);
-            if (current == start) {
-                break;
-            }
+            if (current == start) break;
         }
-        std::reverse(path.begin(), path.end()); // 轉成 start -> target
+        std::reverse(path.begin(), path.end());
         return path;
     };
 
@@ -249,14 +295,12 @@ void App::Start() {
             continue;
         }
 
-        // 預先轉世界座標, 避免每幀重算
         std::vector<WorldPos> worldPath;
         worldPath.reserve(gridPath.size());
         for (const auto& [x, y] : gridPath) {
             worldPath.push_back(toWorld(x, y));
         }
 
-        // pathIndex 與 Enemy 路線索引一一對應
         m_AllPathsWorldPositions.push_back(std::move(worldPath));
         LOG_TRACE("尋路成功！已找到第 " + std::to_string(pathIndex + 1) + " 個敵洞的路徑。");
     }
@@ -267,26 +311,27 @@ void App::Start() {
 
 void App::Update() {
     // 1. 讀取輸入 轉成平移與縮放參數
-    const float cameraPanPerFrame = 800.0F / static_cast<float>(kSpawnIntervalFrames); // 鏡頭每幀位移
+    // IDE 提示修復：改為 constexpr
+    constexpr float cameraPanPerFrame = 800.0F / static_cast<float>(kSpawnIntervalFrames);
     float dx = 0.0F;
     float dy = 0.0F;
 
-    // WASD 輸入轉成位移向量
     if (Util::Input::IsKeyPressed(Util::Keycode::A)) dx += cameraPanPerFrame;
     if (Util::Input::IsKeyPressed(Util::Keycode::D)) dx -= cameraPanPerFrame;
     if (Util::Input::IsKeyPressed(Util::Keycode::W)) dy -= cameraPanPerFrame;
     if (Util::Input::IsKeyPressed(Util::Keycode::S)) dy += cameraPanPerFrame;
 
-    // Q/E 縮放地圖 路徑 敵人
     float zoomRequestFactor = 1.0F;
-    const float zoomStepPerFrame = 1.0F + (2.0F / static_cast<float>(kSpawnIntervalFrames)); // 每幀縮放倍率
+    // IDE 提示修復：改為 constexpr
+    constexpr float zoomStepPerFrame = 1.0F + (2.0F / static_cast<float>(kSpawnIntervalFrames));
+
     if (Util::Input::IsKeyPressed(Util::Keycode::Q)) zoomRequestFactor *= zoomStepPerFrame;
     if (Util::Input::IsKeyPressed(Util::Keycode::E)) zoomRequestFactor /= zoomStepPerFrame;
 
-    const float targetZoom = std::clamp(m_MapZoom * zoomRequestFactor, 0.5F, 3.0F); // 縮放上下限
-    const float appliedZoomFactor = targetZoom / m_MapZoom; // 本幀相對倍率
+    const float targetZoom = std::clamp(m_MapZoom * zoomRequestFactor, 0.5F, 3.0F);
+    const float appliedZoomFactor = targetZoom / m_MapZoom;
+
     if (appliedZoomFactor != 1.0F) {
-        // 地圖位置與 scale 同步縮放
         for (auto& tile : m_MapTiles) {
             tile->m_Transform.translation.x *= appliedZoomFactor;
             tile->m_Transform.translation.y *= appliedZoomFactor;
@@ -294,7 +339,13 @@ void App::Update() {
             tile->m_Transform.scale.y *= appliedZoomFactor;
         }
 
-        // 路徑節點也要同步縮放
+        for (auto& gate : m_Gates) {
+            gate->m_Transform.translation.x *= appliedZoomFactor;
+            gate->m_Transform.translation.y *= appliedZoomFactor;
+            gate->m_Transform.scale.x *= appliedZoomFactor;
+            gate->m_Transform.scale.y *= appliedZoomFactor;
+        }
+
         for (auto& path : m_AllPathsWorldPositions) {
             for (auto& [x, y] : path) {
                 x *= appliedZoomFactor;
@@ -302,7 +353,6 @@ void App::Update() {
             }
         }
 
-        // 場上敵人位置與 scale 同步縮放
         for (auto& enemy : m_Enemies) {
             enemy->m_Transform.translation.x *= appliedZoomFactor;
             enemy->m_Transform.translation.y *= appliedZoomFactor;
@@ -313,7 +363,7 @@ void App::Update() {
         m_MapZoom = targetZoom;
     }
 
-    // 2. 生怪冷卻與派怪 冷卻為 0 時 每條路徑生成一隻敵人
+    // 2. 生怪冷卻與派怪...
     if (!m_AllPathsWorldPositions.empty()) {
         if (m_SpawnCooldownFrames == 0) {
             auto enemyImage = m_AtlasLoader->Get("enemy-type-regular");
@@ -323,44 +373,43 @@ void App::Update() {
                 m_Enemies.push_back(enemy);
                 m_Renderer.AddChild(enemy);
             }
-
-            m_SpawnCooldownFrames = getkSpawnIntervalFrames(); // 這裡假設你本來的 kSpawnIntervalFrames 是 60
+            m_SpawnCooldownFrames = getkSpawnIntervalFrames();
         } else {
             --m_SpawnCooldownFrames;
         }
     }
 
-    // 3. 同步更新地圖 路徑 敵人座標 平移 helper 地圖 路徑 敵人一起移動 避免錯位
+    // 3. 同步更新地圖 路徑 敵人座標 (把 m_Gates 加進去一起平移)
     auto translateBy = [&](float moveX, float moveY) {
         for (auto& tile : m_MapTiles) {
             tile->m_Transform.translation.x += moveX;
             tile->m_Transform.translation.y += moveY;
         }
-
+        for (auto& gate : m_Gates) {
+            gate->m_Transform.translation.x += moveX;
+            gate->m_Transform.translation.y += moveY;
+        }
         for (auto& path : m_AllPathsWorldPositions) {
             for (auto& [x, y] : path) {
                 x += moveX;
                 y += moveY;
             }
         }
-
         for (auto& enemy : m_Enemies) {
             enemy->m_Transform.translation.x += moveX;
             enemy->m_Transform.translation.y += moveY;
         }
     };
 
-    // 有位移輸入才做整批平移
     if (dx != 0.0F || dy != 0.0F) {
         translateBy(dx, dy);
     }
 
-    // 4. 逐隻更新敵人移動並回收到終點者
+    // 4. 逐隻更新敵人移動並回收到終點者...
     for (auto& enemy : m_Enemies) {
         enemy->Update(m_AllPathsWorldPositions[enemy->GetPathIndex()]);
     }
 
-    // 到達終點: 先從 Renderer 移除, 再從容器 erase
     for (auto it = m_Enemies.begin(); it != m_Enemies.end();) {
         if ((*it)->HasReachedBase()) {
             m_Renderer.RemoveChild(*it);
@@ -370,10 +419,8 @@ void App::Update() {
         }
     }
 
-    // 提交本幀渲染更新
     m_Renderer.Update();
 
-    // ESC 或視窗關閉時結束
     if (Util::Input::IsKeyUp(Util::Keycode::ESCAPE) || Util::Input::IfExit()) {
         m_CurrentState = State::END;
     }
