@@ -9,6 +9,8 @@
 #include "Util/Enemy.hpp"
 #include "Util/Gate.hpp"
 
+#include <unordered_map>
+
 class App {
 public:
     enum class State {
@@ -39,12 +41,13 @@ private:
     std::vector<std::shared_ptr<Util::GameObject>> m_MapTiles;
     Util::Renderer m_Renderer;
     // 把原本的 m_PathWorldPositions 改成二維陣列
-    std::vector<std::vector<std::pair<float, float>>> m_AllPathsWorldPositions; // 把原本的 m_PathWorldPositions 改成二維陣列
+    // 陣列索引 = 出生點編號；Map 鍵值 (Key) = enemyId，對應其專屬世界座標路徑
+    std::vector<std::unordered_map<int, std::vector<std::pair<float, float>>>> m_AllPathsBySpawnAndType;
     std::vector<std::shared_ptr<Enemy>> m_Enemies; // 管理場上的敵人
 
     // --- 新增生怪控制變數 ---
     int m_SpawnCooldownFrames = 0;              // 目前的冷卻倒數
-    static constexpr int kSpawnIntervalFrames = 120; // 假設遊戲是 60 FPS，60 大約就是 1 秒生一隻
+    static constexpr int kSpawnIntervalFrames = 40; // 假設遊戲是 60 FPS，60 大約就是 1 秒生一隻
     float m_MapZoom = 1.0F; // 目前地圖縮放倍率（1.0 = 原始大小）
 
     std::vector<std::shared_ptr<Gate>> m_Gates;

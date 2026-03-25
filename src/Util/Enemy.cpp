@@ -1,17 +1,28 @@
 #include "Util/Enemy.hpp"
-#include <cmath> // 為了使用 std::sqrt
+#include <cmath>
 
-Enemy::Enemy(std::shared_ptr<Util::Image> image, const std::vector<std::pair<float, float>>& path, int pathIndex)
-    : m_PathIndex(pathIndex) { // <--- 存下索引值
+Enemy::Enemy(std::shared_ptr<Util::Image> image, const std::vector<std::pair<float, float>>& path, int spawnIndex, int enemyId)
+    : m_SpawnIndex(spawnIndex), m_EnemyId(enemyId) {
 
     SetDrawable(image);
-    SetZIndex(10); // 確保圖層在地圖之上
+    SetZIndex(10);
+
+    // 根據 ID 給予不同的特性
+    if (m_EnemyId == 2) {
+        m_Speed = 1.8F; // 快速怪走比較快
+    } else if (m_EnemyId == 3) {
+        m_Speed = 0.8F; // 寒冰怪走比較慢
+    } else {
+        m_Speed = 1.2F; // 普通與防毒的速度
+    }
 
     if (!path.empty()) {
         m_Transform.translation = {path[0].first, path[0].second};
         m_Transform.scale = {0.25F, 0.25F};
     }
 }
+
+// ... Update 函式完全不用改 ...
 
 void Enemy::Update(const std::vector<std::pair<float, float>>& currentPath) {
     // 如果已經抵達主塔，或路徑有問題，就不移動
@@ -26,7 +37,7 @@ void Enemy::Update(const std::vector<std::pair<float, float>>& currentPath) {
     // 計算 X 軸與 Y 軸的距離差異
     float dx = targetX - m_Transform.translation.x;
     float dy = targetY - m_Transform.translation.y;
-    
+
     // 畢氏定理算直線距離
     float distance = std::sqrt(dx * dx + dy * dy);
 
@@ -34,7 +45,7 @@ void Enemy::Update(const std::vector<std::pair<float, float>>& currentPath) {
     if (distance <= m_Speed) {
         m_Transform.translation = {targetX, targetY}; // 對齊該節點
         m_CurrentTargetIndex++; // 切換到下一個節點
-        
+
         if (m_CurrentTargetIndex >= currentPath.size()) {
             m_ReachedBase = true; // 走完全程
         }

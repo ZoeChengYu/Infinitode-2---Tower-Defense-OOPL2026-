@@ -9,17 +9,18 @@
 
 class Enemy : public Util::GameObject {
 public:
-    // 建構子多傳入一個 pathIndex (路徑索引)
-    Enemy(std::shared_ptr<Util::Image> image, const std::vector<std::pair<float, float>>& path, int pathIndex);
+    // 建構子多傳入 enemyId，並將 pathIndex 改名為 spawnIndex
+    Enemy(std::shared_ptr<Util::Image> image, const std::vector<std::pair<float, float>>& path, int spawnIndex, int enemyId);
 
     void Update(const std::vector<std::pair<float, float>>& currentPath);
     bool HasReachedBase() const { return m_ReachedBase; }
 
-    // 讓 App 知道這隻怪目前在走哪一條路
-    int GetPathIndex() const { return m_PathIndex; }
+    int GetSpawnIndex() const { return m_SpawnIndex; }
+    int GetEnemyId() const { return m_EnemyId; } // 取得怪物種類
 
 private:
-    int m_PathIndex = 0; // 新增這行：記錄這是第幾條路線的怪
+    int m_SpawnIndex = 0;
+    int m_EnemyId = 1;    // 記錄怪物種類 ID
     size_t m_CurrentTargetIndex = 0;
     float m_Speed = 1.0F;
     bool m_ReachedBase = false;

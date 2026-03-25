@@ -289,8 +289,8 @@ void App::Start() {
     }
 
     // 6. BFS 尋路 start -> BASE___
-    // IDE 提示修復：將 start 改為 const reference 傳遞避免不必要的複製
-    auto findPathToBase = [&](const GridPos& start) {
+    // ★ 修正：多傳入一個 enemyId，代表現在是為哪種敵人找路
+    auto findPathToBase = [&](const GridPos& start, int enemyId) {
         std::vector<std::vector<bool>> visited(gridHeight, std::vector<bool>(gridWidth, false));
         std::vector<std::vector<GridPos>> parent(gridHeight, std::vector<GridPos>(gridWidth, {-1, -1}));
 
@@ -321,8 +321,37 @@ void App::Start() {
                 const std::string& nextTileCode = mapGrid[nextY][nextX];
                 if (kWalkableTileCodes.find(nextTileCode) == kWalkableTileCodes.end()) continue;
 
-                // 檢查閘門阻擋
-                if (HasClosedGate(currX, currY, nextX, nextY)) continue;
+                // ★ 關鍵邏輯：檢查這道閘門是否「真的」會擋住這隻敵人
+                bool blocked = false;
+                for (const auto& gate : m_Gates) {
+                    if (!gate->IsClosed()) continue; // 打開的閘門誰都能過
+
+                    // 檢查座標是否重疊 (這部分保留原本的判斷邏輯)
+                    bool isHit = false;
+                    if (gate->GetType() == GateType::VERTICAL) {
+                        if (gate->GetGridY() == currY && gate->GetGridY() == nextY) {
+                            int minX = std::min(currX, nextX);
+                            if (gate->GetGridX() == minX) isHit = true;
+                        }
+                    } else {
+                        if (gate->GetGridX() == currX && gate->GetGridX() == nextX) {
+                            int minY = std::min(currY, nextY);
+                            if (gate->GetGridY() == minY) isHit = true;
+                        }
+                    }
+
+                    // 如果撞到閘門，檢查這隻敵人的 ID 是否在阻擋名單內
+                    if (isHit) {
+                        const auto& targetIds = gate->GetTargetIds();
+                        // std::find 會在 targetIds 裡面找 enemyId
+                        if (std::find(targetIds.begin(), targetIds.end(), enemyId) != targetIds.end()) {
+                            blocked = true; // 完蛋，被擋住了
+                            break;
+                        }
+                    }
+                }
+
+                if (blocked) continue; // 此路不通，不加入 Queue
 
                 visited[nextY][nextX] = true;
                 parent[nextY][nextX] = current;
@@ -341,22 +370,28 @@ void App::Start() {
         return path;
     };
 
-    // 7. 每個出生點建立一條世界座標路徑並儲存
-    for (size_t pathIndex = 0; pathIndex < spawnPoints.size(); ++pathIndex) {
-        const auto gridPath = findPathToBase(spawnPoints[pathIndex]);
-        if (gridPath.empty()) {
-            LOG_ERROR("尋路失敗：第 " + std::to_string(pathIndex + 1) + " 個敵洞無法抵達主塔！");
-            continue;
-        }
+    // 7. 每個出生點為「每種敵人」建立專屬路線
+    for (size_t i = 0; i < spawnPoints.size(); ++i) {
+        std::unordered_map<int, std::vector<WorldPos>> pathsForThisSpawn;
 
-        std::vector<WorldPos> worldPath;
-        worldPath.reserve(gridPath.size());
-        for (const auto& [x, y] : gridPath) {
-            worldPath.push_back(toWorld(x, y));
-        }
+        // 假設有 4 種怪物 ID (1:普通, 2:快速, 3:寒冰, 4:防毒)
+        for (int enemyId = 1; enemyId <= 4; ++enemyId) {
+            auto gridPath = findPathToBase(spawnPoints[i], enemyId);
 
-        m_AllPathsWorldPositions.push_back(std::move(worldPath));
-        LOG_TRACE("尋路成功！已找到第 " + std::to_string(pathIndex + 1) + " 個敵洞的路徑。");
+            // 如果這隻怪物找得到路，才把它存起來
+            if (!gridPath.empty()) {
+                std::vector<WorldPos> worldPath;
+                worldPath.reserve(gridPath.size());
+                for (const auto& [x, y] : gridPath) {
+                    worldPath.push_back(toWorld(x, y));
+                }
+                pathsForThisSpawn[enemyId] = std::move(worldPath);
+            } else {
+                // 如果找不到路 (被完全擋死)，印出提示
+                LOG_TRACE("出生點 " + std::to_string(i) + " 的敵人 ID " + std::to_string(enemyId) + " 被閘門徹底擋死了！");
+            }
+        }
+        m_AllPathsBySpawnAndType.push_back(std::move(pathsForThisSpawn));
     }
 
     // 8. 初始化完成 進入 UPDATE
@@ -408,10 +443,13 @@ void App::Update() {
             }
         }
 
-        for (auto& path : m_AllPathsWorldPositions) {
-            for (auto& [x, y] : path) {
-                x *= appliedZoomFactor;
-                y *= appliedZoomFactor;
+        // 縮放路徑
+        for (auto& spawnMap : m_AllPathsBySpawnAndType) {
+            for (auto& [id, path] : spawnMap) {
+                for (auto& [x, y] : path) {
+                    x *= appliedZoomFactor;
+                    y *= appliedZoomFactor;
+                }
             }
         }
 
@@ -425,15 +463,42 @@ void App::Update() {
         m_MapZoom = targetZoom;
     }
 
-    // 2. 生怪冷卻與派怪...
-    if (!m_AllPathsWorldPositions.empty()) {
+    // 2. 生怪冷卻與派怪
+    if (!m_AllPathsBySpawnAndType.empty()) {
         if (m_SpawnCooldownFrames == 0) {
-            auto enemyImage = m_AtlasLoader->Get("enemy-type-regular");
-            for (size_t pathIndex = 0; pathIndex < m_AllPathsWorldPositions.size(); ++pathIndex) {
-                auto enemy = std::make_shared<Enemy>(enemyImage, m_AllPathsWorldPositions[pathIndex], static_cast<int>(pathIndex));
-                enemy->m_Transform.scale = {kTileScale * m_MapZoom, kTileScale * m_MapZoom};
-                m_Enemies.push_back(enemy);
-                m_Renderer.AddChild(enemy);
+
+            for (size_t spawnIndex = 0; spawnIndex < m_AllPathsBySpawnAndType.size(); ++spawnIndex) {
+                const auto& validPaths = m_AllPathsBySpawnAndType[spawnIndex];
+
+                // 如果這個出生點被四面八方的閘門完全封死，就跳過不出怪
+                if (validPaths.empty()) continue;
+
+                // 收集這個出生點「真正可以走」的怪物 ID 名單
+                std::vector<int> availableIds;
+                for (const auto& [id, path] : validPaths) {
+                    availableIds.push_back(id);
+                }
+
+                // 從可以走的 ID 裡面隨機抽一個！保證絕對不會抽空！
+                int randomIndex = std::rand() % availableIds.size();
+                int chosenEnemyId = availableIds[randomIndex];
+
+                // 根據抽中的 ID 決定貼圖
+                std::string enemyTexName;
+                if (chosenEnemyId == 1) enemyTexName = "enemy-type-regular";
+                else if (chosenEnemyId == 2) enemyTexName = "enemy-type-fast";
+                else if (chosenEnemyId == 3) enemyTexName = "enemy-type-icy";
+                else enemyTexName = "enemy-type-toxic";
+
+                if (auto enemyImage = m_AtlasLoader->Get(enemyTexName)) {
+                    // 取出這隻怪物的專屬路徑傳入
+                    const auto& specialPath = validPaths.at(chosenEnemyId);
+                    auto enemy = std::make_shared<Enemy>(enemyImage, specialPath, static_cast<int>(spawnIndex), chosenEnemyId);
+                    enemy->m_Transform.scale = {kTileScale * m_MapZoom, kTileScale * m_MapZoom};
+
+                    m_Enemies.push_back(enemy);
+                    m_Renderer.AddChild(enemy);
+                }
             }
             m_SpawnCooldownFrames = getkSpawnIntervalFrames();
         } else {
@@ -457,10 +522,15 @@ void App::Update() {
                 bar.object->m_Transform.translation.y += moveY;
             }
         }
-        for (auto& path : m_AllPathsWorldPositions) {
-            for (auto& [x, y] : path) {
-                x += moveX;
-                y += moveY;
+        // 同步平移路徑
+        for (auto& spawnMap : m_AllPathsBySpawnAndType) {
+            // 第二層：解開 Map
+            for (auto& [id, path] : spawnMap) {
+                // 第三層：修改真正的座標
+                for (auto& [x, y] : path) {
+                    x += moveX;
+                    y += moveY;
+                }
             }
         }
         for (auto& enemy : m_Enemies) {
@@ -473,9 +543,11 @@ void App::Update() {
         translateBy(dx, dy);
     }
 
-    // 4. 逐隻更新敵人移動並回收到終點者...
+    // 4. 逐隻更新敵人移動並回收到終點者
     for (auto& enemy : m_Enemies) {
-        enemy->Update(m_AllPathsWorldPositions[enemy->GetPathIndex()]);
+        // 從 Map 裡面精準拿出這隻敵人的專屬路線！
+        const auto& itsOwnPath = m_AllPathsBySpawnAndType[enemy->GetSpawnIndex()][enemy->GetEnemyId()];
+        enemy->Update(itsOwnPath);
     }
 
     for (auto it = m_Enemies.begin(); it != m_Enemies.end();) {
