@@ -168,31 +168,77 @@ void App::Start() {
         return {worldX, worldY};
     };
 
-    // 4.5. 現在 toWorld 定義好了，可以開始建立閘門物件
+    // 4.5. 現在 toWorld 定義好了，開始建立閘門物件
     for (const auto& gateLine : gateLines) {
         std::stringstream ss(gateLine);
         std::string typeStr;
         int gx, gy;
 
+        // 先讀取類型與座標
         if (ss >> typeStr >> gx >> gy) {
+            // 接著把後面剩下的所有數字(ID)讀進 vector
+            std::vector<int> targetIds;
+            int id;
+            while (ss >> id) {
+                targetIds.push_back(id);
+            }
+
             GateType gType = (typeStr == "GATE_H") ? GateType::HORIZONTAL : GateType::VERTICAL;
             std::string texName = (gType == GateType::HORIZONTAL) ? "gate-barrier-type-horizontal" : "gate-barrier-type-vertical";
 
-            // IDE 提示修復：把 gateImage 的宣告移到 if 條件內
             if (auto gateImage = m_AtlasLoader->Get(texName)) {
-                auto gate = std::make_shared<Gate>(gateImage, gType, gx, gy);
+                auto gate = std::make_shared<Gate>(gateImage, gType, targetIds, gx, gy);
 
-                // 計算位置：放在兩格的中心點
+                // 計算閘門的中心位置
                 auto [world1X, world1Y] = toWorld(gx, gy);
                 int nextX = gx + (gType == GateType::VERTICAL ? 1 : 0);
                 int nextY = gy + (gType == GateType::HORIZONTAL ? 1 : 0);
                 auto [world2X, world2Y] = toWorld(nextX, nextY);
 
-                gate->m_Transform.translation = {(world1X + world2X) / 2.0f, (world1Y + world2Y) / 2.0f};
+                float gateWorldX = (world1X + world2X) / 2.0f;
+                float gateWorldY = (world1Y + world2Y) / 2.0f;
+
+                gate->m_Transform.translation = {gateWorldX, gateWorldY};
                 gate->m_Transform.scale = {kTileScale, kTileScale};
 
+                // --- 動態計算每個圖示的排版位置 ---
+                int iconCount = targetIds.size();
+                // 設定圖示之間的間距 (約為格子大小的五分之一，可依視覺效果微調)
+                float spacing = tileSize * 0.2f;
+                // 計算第一個圖示的起始偏移量，讓整體圖示置中
+                float startOffset = -spacing * (iconCount - 1) / 2.0f;
+
+                for (int i = 0; i < iconCount; ++i) {
+                    // 根據你的圖集，可以建立一個函式或 switch 把 ID 轉成圖片名字
+                    std::string iconTexName;
+                    if (targetIds[i] == 1) iconTexName = "enemy-type-regular"; // 舉例：普通(圓形)
+                    else if (targetIds[i] == 2) iconTexName = "enemy-type-fast"; // 舉例：快速(三角形)
+                    else iconTexName = "enemy-type-toxic"; // 預設或其他
+
+                    auto colorIconImage = m_AtlasLoader->Get(iconTexName);
+                    if (colorIconImage) {
+                        auto colorObj = std::make_shared<Util::GameObject>();
+                        colorObj->SetDrawable(colorIconImage);
+                        colorObj->SetZIndex(6); // 畫在閘門上方
+
+                        // 計算這個圖示該有的偏移量
+                        float currentOffset = startOffset + (i * spacing);
+
+                        // 橫向閘門：左右排開 (X軸偏移)；直向閘門：上下排開 (Y軸偏移)
+                        float iconX = gateWorldX + (gType == GateType::HORIZONTAL ? currentOffset : 0.0f);
+                        float iconY = gateWorldY + (gType == GateType::VERTICAL ? currentOffset : 0.0f);
+
+                        colorObj->m_Transform.translation = {iconX, iconY};
+                        // 圖示通常比較小
+                        colorObj->m_Transform.scale = {kTileScale * 0.4f, kTileScale * 0.4f};
+
+                        gate->m_ColorIcons.push_back(colorObj);
+                        m_Renderer.AddChild(colorObj);
+                    }
+                }
+
                 m_Gates.push_back(gate);
-                m_Renderer.AddChild(gate); // 畫到畫面上
+                m_Renderer.AddChild(gate);
             }
         }
     }
@@ -344,6 +390,14 @@ void App::Update() {
             gate->m_Transform.translation.y *= appliedZoomFactor;
             gate->m_Transform.scale.x *= appliedZoomFactor;
             gate->m_Transform.scale.y *= appliedZoomFactor;
+
+            // 新增：讓彩色圖示也一起縮放
+            for (auto& icon : gate->m_ColorIcons) {
+                icon->m_Transform.translation.x *= appliedZoomFactor;
+                icon->m_Transform.translation.y *= appliedZoomFactor;
+                icon->m_Transform.scale.x *= appliedZoomFactor;
+                icon->m_Transform.scale.y *= appliedZoomFactor;
+            }
         }
 
         for (auto& path : m_AllPathsWorldPositions) {
@@ -388,6 +442,12 @@ void App::Update() {
         for (auto& gate : m_Gates) {
             gate->m_Transform.translation.x += moveX;
             gate->m_Transform.translation.y += moveY;
+
+            // 新增：讓彩色圖示也一起平移
+            for (auto& icon : gate->m_ColorIcons) {
+                icon->m_Transform.translation.x += moveX;
+                icon->m_Transform.translation.y += moveY;
+            }
         }
         for (auto& path : m_AllPathsWorldPositions) {
             for (auto& [x, y] : path) {
