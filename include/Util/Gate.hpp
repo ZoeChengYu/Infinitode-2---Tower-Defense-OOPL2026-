@@ -8,15 +8,18 @@
 
 enum class GateType { HORIZONTAL, VERTICAL };
 
+// 新增一個小結構：同時記住「物件」和它的「原圖」
+struct ColorBar {
+    std::shared_ptr<Util::GameObject> object;
+    std::shared_ptr<Util::Image> image;
+};
+
 class Gate : public Util::GameObject {
 public:
-    // 傳入 vector<int> 而不是單一 int
-    Gate(std::shared_ptr<Util::Image> image, GateType type, const std::vector<int>& targetIds, int gridX, int gridY);
+    Gate(std::shared_ptr<Util::Image> frameImage, GateType type, const std::vector<int>& targetIds, int gridX, int gridY);
 
     GateType GetType() const { return m_Type; }
     bool IsClosed() const { return m_IsClosed; }
-
-    // 取得所有要阻擋的敵人 ID，這給未來 BFS 判斷特定敵人能不能過時使用
     const std::vector<int>& GetTargetIds() const { return m_TargetIds; }
 
     void SetClosed(bool closed);
@@ -24,15 +27,17 @@ public:
     int GetGridX() const { return m_GridX; }
     int GetGridY() const { return m_GridY; }
 
-    std::vector<std::shared_ptr<Util::GameObject>> m_ColorIcons;
+    // 把原本的 vector 改成裝我們定義的 ColorBar
+    std::vector<ColorBar> m_ColorBars;
 
 private:
     GateType m_Type;
-    std::vector<int> m_TargetIds; // 變成陣列
+    std::vector<int> m_TargetIds;
     bool m_IsClosed = true;
     int m_GridX;
     int m_GridY;
-    std::shared_ptr<Util::Image> m_Image;
+
+    std::shared_ptr<Util::Image> m_FrameImage;
 };
 
 #endif

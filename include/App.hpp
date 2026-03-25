@@ -19,9 +19,9 @@ public:
 
     State GetCurrentState() const { return m_CurrentState; }
 
-    int getkSpawnIntervalFrames();
+    static int getkSpawnIntervalFrames();
 
-    int setkSpawnIntervalFrames(int diffIntervalFrames);
+    static int setkSpawnIntervalFrames(int diffIntervalFrames);
 
     bool HasClosedGate(int fromX, int fromY, int toX, int toY) const;
 

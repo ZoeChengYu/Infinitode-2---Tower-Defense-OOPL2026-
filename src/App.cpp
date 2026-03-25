@@ -203,39 +203,35 @@ void App::Start() {
 
                 // --- 動態計算每個圖示的排版位置 ---
                 int iconCount = targetIds.size();
-                // 設定圖示之間的間距 (約為格子大小的五分之一，可依視覺效果微調)
                 float spacing = tileSize * 0.2f;
-                // 計算第一個圖示的起始偏移量，讓整體圖示置中
                 float startOffset = -spacing * (iconCount - 1) / 2.0f;
 
                 for (int i = 0; i < iconCount; ++i) {
-                    // 根據你的圖集，可以建立一個函式或 switch 把 ID 轉成圖片名字
-                    std::string iconTexName;
-                    if (targetIds[i] == 1) iconTexName = "enemy-type-regular"; // 舉例：普通(圓形)
-                    else if (targetIds[i] == 2) iconTexName = "enemy-type-fast"; // 舉例：快速(三角形)
-                    else iconTexName = "enemy-type-toxic"; // 預設或其他
+                    // 根據 ID 決定要拿哪張圖
+                    std::string texNameForBar;
+                    if (targetIds[i] == 1) texNameForBar = "enemy-type-regular";
+                    else if (targetIds[i] == 2) texNameForBar = "enemy-type-fast";
+                    else texNameForBar = "enemy-type-toxic";
 
-                    auto colorIconImage = m_AtlasLoader->Get(iconTexName);
-                    if (colorIconImage) {
+                    // IDE 提示修復：將變數宣告移入 if 條件內，並統一名稱為 colorBlockImage
+                    if (auto colorBlockImage = m_AtlasLoader->Get(texNameForBar)) {
                         auto colorObj = std::make_shared<Util::GameObject>();
-                        colorObj->SetDrawable(colorIconImage);
+                        colorObj->SetDrawable(colorBlockImage);
                         colorObj->SetZIndex(6); // 畫在閘門上方
 
-                        // 計算這個圖示該有的偏移量
                         float currentOffset = startOffset + (i * spacing);
-
-                        // 橫向閘門：左右排開 (X軸偏移)；直向閘門：上下排開 (Y軸偏移)
                         float iconX = gateWorldX + (gType == GateType::HORIZONTAL ? currentOffset : 0.0f);
                         float iconY = gateWorldY + (gType == GateType::VERTICAL ? currentOffset : 0.0f);
 
                         colorObj->m_Transform.translation = {iconX, iconY};
-                        // 圖示通常比較小
                         colorObj->m_Transform.scale = {kTileScale * 0.4f, kTileScale * 0.4f};
 
-                        gate->m_ColorIcons.push_back(colorObj);
+                        // 將 GameObject 和 原圖 一起存入 ColorBar 結構中
+                        gate->m_ColorBars.push_back({colorObj, colorBlockImage});
                         m_Renderer.AddChild(colorObj);
                     }
                 }
+                // ---------------------------------
 
                 m_Gates.push_back(gate);
                 m_Renderer.AddChild(gate);
@@ -391,12 +387,12 @@ void App::Update() {
             gate->m_Transform.scale.x *= appliedZoomFactor;
             gate->m_Transform.scale.y *= appliedZoomFactor;
 
-            // 新增：讓彩色圖示也一起縮放
-            for (auto& icon : gate->m_ColorIcons) {
-                icon->m_Transform.translation.x *= appliedZoomFactor;
-                icon->m_Transform.translation.y *= appliedZoomFactor;
-                icon->m_Transform.scale.x *= appliedZoomFactor;
-                icon->m_Transform.scale.y *= appliedZoomFactor;
+            for (auto& bar : gate->m_ColorBars) {
+                // 注意這裡多了一個 .object
+                bar.object->m_Transform.translation.x *= appliedZoomFactor;
+                bar.object->m_Transform.translation.y *= appliedZoomFactor;
+                bar.object->m_Transform.scale.x *= appliedZoomFactor;
+                bar.object->m_Transform.scale.y *= appliedZoomFactor;
             }
         }
 
@@ -444,9 +440,9 @@ void App::Update() {
             gate->m_Transform.translation.y += moveY;
 
             // 新增：讓彩色圖示也一起平移
-            for (auto& icon : gate->m_ColorIcons) {
-                icon->m_Transform.translation.x += moveX;
-                icon->m_Transform.translation.y += moveY;
+            for (auto& bar : gate->m_ColorBars) {
+                bar.object->m_Transform.translation.x += moveX;
+                bar.object->m_Transform.translation.y += moveY;
             }
         }
         for (auto& path : m_AllPathsWorldPositions) {
