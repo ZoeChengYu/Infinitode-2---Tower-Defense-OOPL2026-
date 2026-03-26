@@ -497,3 +497,6 @@ docs/html/
 
 # MacOS files
 .DS_Store
+
+id_ed25519a
+id_ed25519a.pub
