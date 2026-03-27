@@ -19,42 +19,42 @@
 
 // 檔案內部常數與型別
 namespace {
-using GridPos = std::pair<int, int>;      // 地圖格子座標 (x, y)
-using WorldPos = std::pair<float, float>; // 世界座標 (x, y)
+    using GridPos = std::pair<int, int>;      // 地圖格子座標 (x, y)
+    using WorldPos = std::pair<float, float>; // 世界座標 (x, y)
 
-constexpr float kTileScale = 0.3F; // 地圖貼圖縮放比例
-// BFS 四方向位移: 右、下、左、上
-constexpr std::array<GridPos, 4> kNeighborOffsets = {{{1, 0}, {0, 1}, {-1, 0}, {0, -1}}};
+    constexpr float kTileScale = 0.3F; // 地圖貼圖縮放比例
+    // BFS 四方向位移: 右、下、左、上
+    constexpr std::array<GridPos, 4> kNeighborOffsets = {{{1, 0}, {0, 1}, {-1, 0}, {0, -1}}};
 
-// 地圖代碼 -> 圖集 key
-const std::unordered_map<std::string, std::string> kTileTextureByCode = {
-    {"BUILD__", "tile-type-platform"},      // 建塔平台（不可走）
-    {"SPAWN__", "tile-type-spawn-portal"},  // 出生點
-    {"BASE___", "tile-type-target-base"},   // 終點
+    // 地圖代碼 -> 圖集 key
+    const std::unordered_map<std::string, std::string> kTileTextureByCode = {
+        {"BUILD__", "tile-type-platform"},      // 建塔平台（不可走）
+        {"SPAWN__", "tile-type-spawn-portal"},  // 出生點
+        {"BASE___", "tile-type-target-base"},   // 終點
 
-    {"HORIZ__", "tile-type-road-xoxo"},     // 水平直路
-    {"VERT___", "tile-type-road-oxox"},     // 垂直直路
+        {"HORIZ__", "tile-type-road-xoxo"},     // 水平直路
+        {"VERT___", "tile-type-road-oxox"},     // 垂直直路
 
-    {"TURN_LD", "tile-type-road-xxoo"},     // 轉角：左+下
-    {"TURN_RD", "tile-type-road-xoox"},     // 轉角：右+下
-    {"TURN_UL", "tile-type-road-oxxo"},     // 轉角：上+左
-    {"TURN_UR", "tile-type-road-ooxx"},     // 轉角：上+右
+        {"TURN_LD", "tile-type-road-xxoo"},     // 轉角：左+下
+        {"TURN_RD", "tile-type-road-xoox"},     // 轉角：右+下
+        {"TURN_UL", "tile-type-road-oxxo"},     // 轉角：上+左
+        {"TURN_UR", "tile-type-road-ooxx"},     // 轉角：上+右
 
-    {"T_UP___", "tile-type-road-ooxo"},     // T 字：上+左+右
-    {"T_DOWN_", "tile-type-road-xooo"},     // T 字：下+左+右
-    {"T_LEFT_", "tile-type-road-oxox"},     // T 字：上+下+左
-    {"T_RIGHT", "tile-type-road-ooox"},     // T 字：上+下+右
+        {"T_UP___", "tile-type-road-ooxo"},     // T 字：上+左+右
+        {"T_DOWN_", "tile-type-road-xooo"},     // T 字：下+左+右
+        {"T_LEFT_", "tile-type-road-oxox"},     // T 字：上+下+左
+        {"T_RIGHT", "tile-type-road-ooox"},     // T 字：上+下+右
 
-    {"CROSS__", "tile-type-road-oooo"},     // 十字路
-    {"ALONE__", "tile-type-road-xxxx"},     // 孤立路
-};
+        {"CROSS__", "tile-type-road-oooo"},     // 十字路
+        {"ALONE__", "tile-type-road-xxxx"},     // 孤立路
+    };
 
-// 可走地塊集合, BFS 只在這些代碼上擴展
-const std::unordered_set<std::string> kWalkableTileCodes = {
-    "HORIZ__", "CROSS__", "ALONE__", "T_UP___", "T_DOWN_",
-    "VERT___", "T_RIGHT", "T_LEFT_", "TURN_LD", "TURN_RD",
-    "TURN_UL", "TURN_UR", "BASE___",
-};
+    // 可走地塊集合, BFS 只在這些代碼上擴展
+    const std::unordered_set<std::string> kWalkableTileCodes = {
+        "HORIZ__", "CROSS__", "ALONE__", "T_UP___", "T_DOWN_",
+        "VERT___", "T_RIGHT", "T_LEFT_", "TURN_LD", "TURN_RD",
+        "TURN_UL", "TURN_UR", "BASE___",
+    };
 } // namespace
 
 int App::getkSpawnIntervalFrames(){
