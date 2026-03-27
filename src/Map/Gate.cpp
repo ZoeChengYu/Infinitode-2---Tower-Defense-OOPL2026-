@@ -1,4 +1,4 @@
-#include "Util/Gate.hpp"
+#include "Map/Gate.hpp"
 
 Gate::Gate(std::shared_ptr<Util::Image> frameImage, GateType type, const std::vector<int>& targetIds, int gridX, int gridY)
     : m_Type(type), m_TargetIds(targetIds), m_GridX(gridX), m_GridY(gridY), m_FrameImage(frameImage) {
