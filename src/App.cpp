@@ -263,7 +263,7 @@ void App::Start() {
             }
 
             // 0000 視為空白格, 不建立物件
-            if (tileCode == "0000") continue;
+            if (tileCode == "0000000") continue;
 
             // 查貼圖 key 查不到就略過該格
             const auto textureIt = kTileTextureByCode.find(tileCode);
