@@ -7,7 +7,7 @@
 #include "Util/GameObject.hpp"
 #include "Util/Renderer.hpp"
 #include "Util/Enemy.hpp"
-#include "Util/Gate.hpp"
+#include "MAP/Gate.hpp"
 
 #include <unordered_map>
 

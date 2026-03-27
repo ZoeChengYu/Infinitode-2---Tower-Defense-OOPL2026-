@@ -17,6 +17,7 @@ public:
 
     int GetSpawnIndex() const { return m_SpawnIndex; }
     int GetEnemyId() const { return m_EnemyId; } // 取得怪物種類
+    void SetSpeed(float speed);
 
 private:
     int m_SpawnIndex = 0;
