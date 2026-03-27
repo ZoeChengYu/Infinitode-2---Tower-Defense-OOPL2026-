@@ -55,6 +55,24 @@ namespace {
         "VERT___", "T_RIGHT", "T_LEFT_", "TURN_LD", "TURN_RD",
         "TURN_UL", "TURN_UR", "BASE___",
     };
+
+    // 怪物 ID 轉名稱的小幫手
+    std::string GetEnemySubName(int id) {
+        switch(id) {
+            case 1: return "regular";
+            case 2: return "fast";
+            case 3: return "icy";
+            case 4: return "toxic";
+            case 5: return "armored";
+            case 6: return "fighter";
+            case 7: return "healer";
+            case 8: return "heli";
+            case 9: return "jet";
+            case 10: return "light";
+            case 11: return "strong";
+            default: return "regular";
+        }
+    }
 } // namespace
 
 int App::getkSpawnIntervalFrames(){
@@ -101,7 +119,7 @@ void App::Start() {
     }
 
     // 2. 讀取地圖檔到 mapGrid[y][x]
-    std::ifstream mapFile(RESOURCE_DIR "/maps/map_01.txt");
+    std::ifstream mapFile(RESOURCE_DIR "/maps/map_demo02.txt");
     if (!mapFile.is_open()) {
         LOG_ERROR("無法開啟 maps/map_01.txt！請檢查檔案路徑。");
         return;
@@ -168,85 +186,129 @@ void App::Start() {
         return {worldX, worldY};
     };
 
-    // 4.5. 現在 toWorld 定義好了，開始建立閘門物件
+    // 4.5. 現在 toWorld 定義好了，開始建立閘門與傳送門物件
     for (const auto& gateLine : gateLines) {
         std::stringstream ss(gateLine);
         std::string typeStr;
-        int gx, gy;
 
-        if (ss >> typeStr >> gx >> gy) {
-            std::vector<int> targetIds;
-            int id;
-            while (ss >> id) {
-                targetIds.push_back(id);
-            }
+        // ★ 修正：先只讀取第一個字串，確認物件種類 ★
+        if (ss >> typeStr) {
+            
+            // 情況一：如果是閘門
+            if (typeStr == "GATE_H" || typeStr == "GATE_V") {
+                int gx, gy;
+                if (ss >> gx >> gy) {
+                    std::vector<int> targetIds;
+                    int id;
+                    while (ss >> id) {
+                        targetIds.push_back(id);
+                    }
 
-            GateType gType = (typeStr == "GATE_H") ? GateType::HORIZONTAL : GateType::VERTICAL;
+                    GateType gType = (typeStr == "GATE_H") ? GateType::HORIZONTAL : GateType::VERTICAL;
+                    std::string texName = (gType == GateType::HORIZONTAL) ? "gate-barrier-type-horizontal" : "gate-barrier-type-vertical";
 
-            // ★ 修正 1：換成圖集中那兩張「亮藍色輪廓」的外框圖片
-            std::string texName = (gType == GateType::HORIZONTAL) ? "gate-barrier-type-horizontal" : "gate-barrier-type-vertical";
+                    if (auto gateImage = m_AtlasLoader->Get(texName)) {
+                        auto gate = std::make_shared<Gate>(gateImage, gType, targetIds, gx, gy);
 
-            if (auto gateImage = m_AtlasLoader->Get(texName)) {
-                auto gate = std::make_shared<Gate>(gateImage, gType, targetIds, gx, gy);
+                        auto [world1X, world1Y] = toWorld(gx, gy);
+                        int nextX = gx + (gType == GateType::VERTICAL ? 1 : 0);
+                        int nextY = gy + (gType == GateType::HORIZONTAL ? 1 : 0);
+                        auto [world2X, world2Y] = toWorld(nextX, nextY);
 
-                auto [world1X, world1Y] = toWorld(gx, gy);
-                int nextX = gx + (gType == GateType::VERTICAL ? 1 : 0);
-                int nextY = gy + (gType == GateType::HORIZONTAL ? 1 : 0);
-                auto [world2X, world2Y] = toWorld(nextX, nextY);
+                        float gateWorldX = (world1X + world2X) / 2.0f;
+                        float gateWorldY = (world1Y + world2Y) / 2.0f;
 
-                float gateWorldX = (world1X + world2X) / 2.0f;
-                float gateWorldY = (world1Y + world2Y) / 2.0f;
+                        gate->m_Transform.translation = {gateWorldX, gateWorldY};
+                        gate->m_Transform.scale = {kTileScale, kTileScale};
 
-                gate->m_Transform.translation = {gateWorldX, gateWorldY};
-                gate->m_Transform.scale = {kTileScale, kTileScale};
+                        int iconCount = targetIds.size();
+                        float totalBarLength = tileSize * 0.75f; 
+                        float segmentLength = totalBarLength / iconCount; 
+                        float barThickness = tileSize * 0.15f; 
 
-                // ★ 修正 2：動態計算「連續能量棒」的排版與強制拉伸縮放
-                int iconCount = targetIds.size();
-                float totalBarLength = tileSize * 0.75f; // 能量棒總長度佔格子的 75% (剛好塞進外框)
-                float segmentLength = totalBarLength / iconCount; // 每一小段顏色的長度
-                float barThickness = tileSize * 0.15f; // 能量棒的粗細
+                        float startOffset = -(totalBarLength / 2.0f) + (segmentLength / 2.0f);
 
-                // 起始點偏移 (讓整條能量棒完美置中)
-                float startOffset = -(totalBarLength / 2.0f) + (segmentLength / 2.0f);
+                        for (int i = 0; i < iconCount; ++i) {
+                            // ★ 瞬間簡化：透過 ID 取得名稱，自動拼湊出對應的純色圖檔名！
+                            std::string texNameForBar = "color-" + GetEnemySubName(targetIds[i]);
 
-                for (int i = 0; i < iconCount; ++i) {
-                    // ★ 修正：改用我們剛剛在 atlas 定義的純色方塊
-                    std::string texNameForBar;
-                    if (targetIds[i] == 1) texNameForBar = "color-regular"; // 綠色
-                    else if (targetIds[i] == 2) texNameForBar = "color-fast"; // 黃色
-                    else if (targetIds[i] == 3) texNameForBar = "color-icy"; // 藍色
-                    else texNameForBar = "color-toxic"; // 紫色
+                            if (auto colorBlockImage = m_AtlasLoader->Get(texNameForBar)) {
+                                auto colorObj = std::make_shared<Util::GameObject>();
+                                colorObj->SetDrawable(colorBlockImage);
+                                colorObj->SetZIndex(6); 
 
-                    if (auto colorBlockImage = m_AtlasLoader->Get(texNameForBar)) {
-                        auto colorObj = std::make_shared<Util::GameObject>();
-                        colorObj->SetDrawable(colorBlockImage);
-                        colorObj->SetZIndex(6); // 畫在深色閘門上方
+                                float currentOffset = startOffset + (i * segmentLength);
+                                float iconX = gateWorldX + (gType == GateType::HORIZONTAL ? currentOffset : 0.0f);
+                                float iconY = gateWorldY + (gType == GateType::VERTICAL ? currentOffset : 0.0f);
 
-                        // 計算當前這段顏色的中心位置
-                        float currentOffset = startOffset + (i * segmentLength);
-                        float iconX = gateWorldX + (gType == GateType::HORIZONTAL ? currentOffset : 0.0f);
-                        float iconY = gateWorldY + (gType == GateType::VERTICAL ? currentOffset : 0.0f);
+                                colorObj->m_Transform.translation = {iconX, iconY};
 
-                        colorObj->m_Transform.translation = {iconX, iconY};
+                                float imgSize = m_AtlasLoader->Getsize(texNameForBar);
 
-                        // 取得原始圖片的尺寸 (現在會是 2.0f)
-                        float imgSize = m_AtlasLoader->Getsize(texNameForBar);
+                                if (gType == GateType::HORIZONTAL) {
+                                    colorObj->m_Transform.scale = { segmentLength / imgSize, barThickness / imgSize };
+                                } else {
+                                    colorObj->m_Transform.scale = { barThickness / imgSize, segmentLength / imgSize };
+                                }
 
-                        if (gType == GateType::HORIZONTAL) {
-                            // 橫向閘門：X 軸拉長成段長，Y 軸變成能量棒粗細
-                            colorObj->m_Transform.scale = { segmentLength / imgSize, barThickness / imgSize };
-                        } else {
-                            // 直向閘門：Y 軸拉長成段長，X 軸變成能量棒粗細
-                            colorObj->m_Transform.scale = { barThickness / imgSize, segmentLength / imgSize };
+                                gate->m_ColorBars.push_back({colorObj, colorBlockImage});
+                                m_Renderer.AddChild(colorObj);
+                            }
                         }
 
-                        gate->m_ColorBars.push_back({colorObj, colorBlockImage});
-                        m_Renderer.AddChild(colorObj);
+                        m_Gates.push_back(gate);
+                        m_Renderer.AddChild(gate);
                     }
                 }
+            }
+            // 情況二：如果是傳送門
+            else if (typeStr == "TELEPORT_H" || typeStr == "TELEPORT_V") {
+                int tpId, gx, gy;
+                if (ss >> tpId >> gx >> gy) {
+                    GateType gType = (typeStr == "TELEPORT_H") ? GateType::HORIZONTAL : GateType::VERTICAL;
+                    std::string texName = (gType == GateType::HORIZONTAL) ? "gate-teleport-horizontal" : "gate-teleport-vertical";
 
-                m_Gates.push_back(gate);
-                m_Renderer.AddChild(gate);
+                    if (auto tpImage = m_AtlasLoader->Get(texName)) {
+                        auto tp = std::make_shared<Teleporter>(tpImage, gType, tpId, gx, gy);
+
+                        auto [world1X, world1Y] = toWorld(gx, gy);
+                        int nextX = gx + (gType == GateType::VERTICAL ? 1 : 0);
+                        int nextY = gy + (gType == GateType::HORIZONTAL ? 1 : 0);
+                        auto [world2X, world2Y] = toWorld(nextX, nextY);
+
+                        float tpWorldX = (world1X + world2X) / 2.0f;
+                        float tpWorldY = (world1Y + world2Y) / 2.0f;
+
+                        tp->m_Transform.translation = {tpWorldX, tpWorldY};
+                        tp->m_Transform.scale = {kTileScale, kTileScale};
+
+                        // 將原本這行：
+                        // std::string colorName = (tpId == 1) ? "color-toxic" : "color-regular"; 
+                        
+                        // ★ 換成這行：讓 1~11 號傳送門自動套用我們定義好的 11 種顏色！
+                        std::string colorName = "color-" + GetEnemySubName(tpId);
+                        if (auto colorBlock = m_AtlasLoader->Get(colorName)) {
+                            auto barObj = std::make_shared<Util::GameObject>();
+                            barObj->SetDrawable(colorBlock);
+                            barObj->SetZIndex(5);
+                            barObj->m_Transform.translation = {tpWorldX, tpWorldY};
+
+                            float imgSize = m_AtlasLoader->Getsize(colorName);
+                            float barLength = tileSize * 0.8f;
+                            float barThickness = tileSize * 0.1f;
+
+                            if (gType == GateType::HORIZONTAL) {
+                                barObj->m_Transform.scale = { barLength / imgSize, barThickness / imgSize };
+                            } else {
+                                barObj->m_Transform.scale = { barThickness / imgSize, barLength / imgSize };
+                            }
+                            tp->m_ColorBar = barObj;
+                            m_Renderer.AddChild(barObj);
+                        }
+                        m_Teleporters.push_back(tp);
+                        m_Renderer.AddChild(tp);
+                    }
+                }
             }
         }
     }
@@ -288,6 +350,66 @@ void App::Start() {
         }
     }
 
+    // --- 建立傳送門的蟲洞連結 ---
+    std::unordered_map<int, std::vector<std::shared_ptr<Teleporter>>> tpPairs;
+    for (auto& tp : m_Teleporters) {
+        tpPairs[tp->GetTeleportId()].push_back(tp);
+    }
+
+    // 輔助函式：判斷座標是否在界內且為「可走的道路」
+    auto isWalkable = [&](GridPos p) {
+        if (p.first < 0 || p.first >= gridWidth || p.second < 0 || p.second >= gridHeight) return false;
+        return kWalkableTileCodes.count(mapGrid[p.second][p.first]) > 0;
+    };
+
+    for (const auto& [id, pairs] : tpPairs) {
+        if (pairs.size() == 2) {
+            auto tA = pairs[0];
+            auto tB = pairs[1];
+
+            GridPos a1 = {tA->GetGridX(), tA->GetGridY()};
+            GridPos a2 = (tA->GetType() == GateType::VERTICAL) ? GridPos{a1.first + 1, a1.second} : GridPos{a1.first, a1.second + 1};
+
+            GridPos b1 = {tB->GetGridX(), tB->GetGridY()};
+            GridPos b2 = (tB->GetType() == GateType::VERTICAL) ? GridPos{b1.first + 1, b1.second} : GridPos{b1.first, b1.second + 1};
+
+            // 找出 A 和 B 哪一側是真正可以安全降落的「路」
+            // 終極智慧判斷：比較兩側的「路網發達程度」，誰連接的路多，誰就是真正的出口！
+            auto getValidDest = [&](GridPos p1, GridPos p2) {
+                int p1_n = 0, p2_n = 0;
+                
+                // 計算 p1 旁邊有幾條路 (扣除掉 p2)
+                for (const auto& offset : kNeighborOffsets) {
+                    GridPos n = {p1.first + offset.first, p1.second + offset.second};
+                    if (n != p2 && isWalkable(n)) p1_n++;
+                }
+                // 計算 p2 旁邊有幾條路 (扣除掉 p1)
+                for (const auto& offset : kNeighborOffsets) {
+                    GridPos n = {p2.first + offset.first, p2.second + offset.second};
+                    if (n != p1 && isWalkable(n)) p2_n++;
+                }
+                
+                // 誰的路多，誰就是真正的安全降落點
+                if (p1_n > p2_n) return p1;
+                if (p2_n > p1_n) return p2;
+                
+                // 如果一樣多，就隨便挑一個可以走的
+                return isWalkable(p1) ? p1 : p2;
+            };
+
+            GridPos destA = getValidDest(a1, a2);
+            GridPos destB = getValidDest(b1, b2);
+
+            // ★ 無敵雙向邏輯：不管怪物從哪一側跨過 A 門，都強制送到 B 門的安全降落點！
+            m_TeleportLinks[{a1, a2}] = destB;
+            m_TeleportLinks[{a2, a1}] = destB;
+            
+            // ★ 同理，跨過 B 門，就強制送到 A 門
+            m_TeleportLinks[{b1, b2}] = destA;
+            m_TeleportLinks[{b2, b1}] = destA;
+        }
+    }
+
     // 6. BFS 尋路 start -> BASE___
     // ★ 修正：多傳入一個 enemyId，代表現在是為哪種敵人找路
     auto findPathToBase = [&](const GridPos& start, int enemyId) {
@@ -312,11 +434,27 @@ void App::Start() {
             }
 
             for (const auto& [offsetX, offsetY] : kNeighborOffsets) {
-                const int nextX = currX + offsetX;
-                const int nextY = currY + offsetY;
+                int nextX = currX + offsetX;
+                int nextY = currY + offsetY;
+
+                // 1. 確保這兩行宣告有確實寫上去
+                GridPos from = {currX, currY};
+                GridPos intendedTo = {nextX, nextY};
+
+                // 2. 修正：使用 std::make_pair 明確包裝成 Key，解決編譯器的型別混淆
+                auto teleKey = std::make_pair(from, intendedTo);
+
+                // ★ 傳送門攔截！改用 teleKey 查詢 ★
+                if (m_TeleportLinks.count(teleKey)) {
+                    GridPos dest = m_TeleportLinks[teleKey];
+                    nextX = dest.first;
+                    nextY = dest.second;
+                }
 
                 const bool inBounds = nextX >= 0 && nextX < gridWidth && nextY >= 0 && nextY < gridHeight;
                 if (!inBounds || visited[nextY][nextX]) continue;
+
+                // ... (下面維持原本的 inBounds 檢查、地形檢查與閘門阻擋邏輯) ...
 
                 const std::string& nextTileCode = mapGrid[nextY][nextX];
                 if (kWalkableTileCodes.find(nextTileCode) == kWalkableTileCodes.end()) continue;
@@ -374,9 +512,10 @@ void App::Start() {
     for (size_t i = 0; i < spawnPoints.size(); ++i) {
         std::unordered_map<int, std::vector<WorldPos>> pathsForThisSpawn;
 
-        // 假設有 4 種怪物 ID (1:普通, 2:快速, 3:寒冰, 4:防毒)
-        for (int enemyId = 1; enemyId <= 4; ++enemyId) {
+        // 讓 11 種怪物都去探路！
+        for (int enemyId = 1; enemyId <= 11; ++enemyId) { 
             auto gridPath = findPathToBase(spawnPoints[i], enemyId);
+            // ...
 
             // 如果這隻怪物找得到路，才把它存起來
             if (!gridPath.empty()) {
@@ -419,6 +558,8 @@ void App::Update() {
 
     const float targetZoom = std::clamp(m_MapZoom * zoomRequestFactor, 0.5F, 3.0F);
     const float appliedZoomFactor = targetZoom / m_MapZoom;
+    
+
 
     if (appliedZoomFactor != 1.0F) {
         for (auto& tile : m_MapTiles) {
@@ -440,6 +581,23 @@ void App::Update() {
                 bar.object->m_Transform.translation.y *= appliedZoomFactor;
                 bar.object->m_Transform.scale.x *= appliedZoomFactor;
                 bar.object->m_Transform.scale.y *= appliedZoomFactor;
+            }
+        }
+
+        // ... (上面是 m_Gates 的縮放迴圈) ...
+
+        // ★ 補上傳送門的縮放邏輯
+        for (auto& tp : m_Teleporters) {
+            tp->m_Transform.translation.x *= appliedZoomFactor;
+            tp->m_Transform.translation.y *= appliedZoomFactor;
+            tp->m_Transform.scale.x *= appliedZoomFactor;
+            tp->m_Transform.scale.y *= appliedZoomFactor;
+
+            if (tp->m_ColorBar) {
+                tp->m_ColorBar->m_Transform.translation.x *= appliedZoomFactor;
+                tp->m_ColorBar->m_Transform.translation.y *= appliedZoomFactor;
+                tp->m_ColorBar->m_Transform.scale.x *= appliedZoomFactor;
+                tp->m_ColorBar->m_Transform.scale.y *= appliedZoomFactor;
             }
         }
 
@@ -479,16 +637,12 @@ void App::Update() {
                     availableIds.push_back(id);
                 }
 
-                // 從可以走的 ID 裡面隨機抽一個！保證絕對不會抽空！
+                // 從可以走的 ID 裡面隨機抽一個
                 int randomIndex = std::rand() % availableIds.size();
                 int chosenEnemyId = availableIds[randomIndex];
 
-                // 根據抽中的 ID 決定貼圖
-                std::string enemyTexName;
-                if (chosenEnemyId == 1) enemyTexName = "enemy-type-regular";
-                else if (chosenEnemyId == 2) enemyTexName = "enemy-type-fast";
-                else if (chosenEnemyId == 3) enemyTexName = "enemy-type-icy";
-                else enemyTexName = "enemy-type-toxic";
+                // ★ 瞬間簡化：自動拼湊出怪物的貼圖名稱
+                std::string enemyTexName = "enemy-type-" + GetEnemySubName(chosenEnemyId);
 
                 if (auto enemyImage = m_AtlasLoader->Get(enemyTexName)) {
                     // 取出這隻怪物的專屬路徑傳入
@@ -522,6 +676,20 @@ void App::Update() {
                 bar.object->m_Transform.translation.y += moveY;
             }
         }
+
+        // ... (上面是 m_Gates 的平移迴圈) ...
+
+        // ★ 補上傳送門的平移邏輯
+        for (auto& tp : m_Teleporters) {
+            tp->m_Transform.translation.x += moveX;
+            tp->m_Transform.translation.y += moveY;
+
+            if (tp->m_ColorBar) {
+                tp->m_ColorBar->m_Transform.translation.x += moveX;
+                tp->m_ColorBar->m_Transform.translation.y += moveY;
+            }
+        }
+
         // 同步平移路徑
         for (auto& spawnMap : m_AllPathsBySpawnAndType) {
             // 第二層：解開 Map

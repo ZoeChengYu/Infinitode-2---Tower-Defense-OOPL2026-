@@ -8,6 +8,8 @@
 #include "Util/Renderer.hpp"
 #include "Util/Enemy.hpp"
 #include "MAP/Gate.hpp"
+#include "Map/Teleporter.hpp"
+#include <map>
 
 #include <unordered_map>
 
@@ -51,6 +53,9 @@ private:
     float m_MapZoom = 1.0F; // 目前地圖縮放倍率（1.0 = 原始大小）
 
     std::vector<std::shared_ptr<Gate>> m_Gates;
+    std::vector<std::shared_ptr<Teleporter>> m_Teleporters;
+
+    std::map<std::pair<std::pair<int, int>, std::pair<int, int>>, std::pair<int, int>> m_TeleportLinks;
 };
 
 #endif
