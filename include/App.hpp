@@ -7,7 +7,7 @@
 #include "Util/GameObject.hpp"
 #include "Util/Renderer.hpp"
 #include "Util/Enemy.hpp"
-#include "MAP/Gate.hpp"
+#include "Map/Gate.hpp"
 #include "Map/Teleporter.hpp"
 #include <map>
 
